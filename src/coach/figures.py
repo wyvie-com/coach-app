@@ -6,8 +6,15 @@ rendered as JSON for the model's user turn and validated against later. Rules:
 - Volume: sum of weight times reps over working sets with both present.
 - Top set: the heaviest working set; ties go to more reps, then to the higher RPE
   (the harder set is the more informative one).
-- Estimated one-rep max: Epley, ``weight * (1 + reps / 30)``, over working sets,
-  the week's best. A single rep is its own max.
+- Estimated one-rep max: Epley, ``weight * (1 + reps / 30)``, over working sets of
+  ten reps or fewer, the week's best. A single rep is its own max. Sets above ten
+  reps give no estimate: the prediction equations were validated on 1 to 10 reps
+  and the error grows past that (Reynolds, Gordon and Robergs 2006, JSCR: "no more
+  than 10 repetitions should be used in linear equations to estimate 1RM"). Hevy's
+  own app keeps estimating to 30 reps; this project chooses not to.
+- Rep PR at matched load: this week's top-set reps against the best reps at exactly
+  that load for the same exercise in the prior twelve weeks. For high-rep training
+  this, with volume, is the strength measure; e1RM is not.
 - Mean RPE: mean over working sets that recorded one.
 - Sessions baseline: mean sessions per week over the four weeks before the review
   week, counting an empty week as zero but never counting weeks before the first
@@ -30,6 +37,8 @@ from coach.model import MELBOURNE, Exercise, Set, WeekId, Workout
 
 MAX_HISTORY_WEEKS = 12
 BASELINE_WEEKS = 4
+#: Prediction equations hold to about ten reps; above that no e1RM is reported.
+E1RM_MAX_REPS = 10
 TITLE_LIMIT = 60
 
 
@@ -72,6 +81,8 @@ class ExerciseFigures(_Frozen):
     superset: bool
     e1rm_change_4w_kg: float | None
     e1rm_change_4w_pct: float | None
+    matched_load_prior_best_reps: int | None
+    rep_pr: bool
 
 
 class WeekFigures(_Frozen):
@@ -122,7 +133,11 @@ def _top_set(sets: Sequence[Set]) -> Set | None:
 
 
 def _e1rm(sets: Sequence[Set]) -> float | None:
-    values = [epley(s.weight_kg, s.reps) for s in sets if s.weight_kg is not None and s.reps]
+    values = [
+        epley(s.weight_kg, s.reps)
+        for s in sets
+        if s.weight_kg is not None and s.reps and s.reps <= E1RM_MAX_REPS
+    ]
     return max(values) if values else None
 
 
@@ -192,6 +207,9 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
         top = _top_set(working)
         now = _e1rm(working)
         then = _comparison_e1rm(by_week, week, template_id)
+        prior_reps = (
+            None if top is None else _prior_best_reps(by_week, week, template_id, top.weight_kg)
+        )
         exercises.append(
             ExerciseFigures(
                 exercise=titles[template_id],
@@ -216,6 +234,8 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
                 superset=any(e.superset for e in present),
                 e1rm_change_4w_kg=_round(None if now is None or then is None else now - then),
                 e1rm_change_4w_pct=_round(_pct(now, then)),
+                matched_load_prior_best_reps=prior_reps,
+                rep_pr=top is not None and prior_reps is not None and top.reps > prior_reps,
             )
         )
     exercises.sort(key=lambda e: (-e.volume_kg, e.exercise))
@@ -254,6 +274,18 @@ def _comparison_e1rm(
         if value is not None:
             return value
     return None
+
+
+def _prior_best_reps(
+    by_week: dict[WeekId, list[Workout]], week: WeekId, template_id: str, load_kg: float
+) -> int | None:
+    """Best reps at exactly ``load_kg`` in the prior twelve weeks; None if never lifted there."""
+    best: int | None = None
+    for back in range(1, MAX_HISTORY_WEEKS + 1):
+        for s in _working(_exercises_in(by_week.get(week.shift(-back), []), template_id)):
+            if s.weight_kg == load_kg and s.reps is not None and (best is None or s.reps > best):
+                best = s.reps
+    return best
 
 
 def known_exercises(workouts: Sequence[Workout]) -> list[str]:
@@ -330,7 +362,7 @@ def format_table(figures: WeekFigures) -> str:
     ]
     header = (
         f"{'exercise':<32} {'sess':>4} {'sets':>4} {'volume':>8} "
-        f"{'top set':>14} {'e1RM':>7} {'RPE':>5} {'4w e1RM':>9}"
+        f"{'top set':>14} {'e1RM':>7} {'RPE':>5} {'4w e1RM':>9} {'rep PR':>7}"
     )
     lines += [header, "-" * len(header)]
     for e in figures.exercises:
@@ -338,9 +370,15 @@ def format_table(figures: WeekFigures) -> str:
         e1rm = "-" if e.e1rm_kg is None else f"{e.e1rm_kg:.1f}"
         rpe = "-" if e.mean_rpe is None else f"{e.mean_rpe:.1f}"
         change = "-" if e.e1rm_change_4w_pct is None else f"{e.e1rm_change_4w_pct:+.1f}%"
+        if e.rep_pr:
+            pr = f"yes>{e.matched_load_prior_best_reps}"
+        elif e.matched_load_prior_best_reps is None:
+            pr = "new"
+        else:
+            pr = f"no={e.matched_load_prior_best_reps}"
         lines.append(
             f"{e.exercise[:32]:<32} {e.sessions:>4} {e.working_sets:>4} {e.volume_kg:>8.0f} "
-            f"{top:>14} {e1rm:>7} {rpe:>5} {change:>9}"
+            f"{top:>14} {e1rm:>7} {rpe:>5} {change:>9} {pr:>7}"
         )
     lines += [f"warning: {w}" for w in figures.warnings]
     return "\n".join(lines)

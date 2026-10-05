@@ -199,3 +199,62 @@ def test_four_week_change_in_week_figures() -> None:
     assert bench.e1rm_change_4w_pct == pytest.approx(
         100 * (epley(80.0, 5) / epley(70.0, 5) - 1), abs=0.1
     )
+
+
+def test_e1rm_is_not_estimated_above_ten_reps() -> None:
+    exercise = Exercise(
+        template_id="TPL00007",
+        title="Calf Press (Machine)",
+        superset=False,
+        sets=(_set(SetKind.NORMAL, 195.0, 20, None), _set(SetKind.NORMAL, 195.0, 18, None)),
+    )
+    calf = week_figures([_workout(W40, 0, [exercise])], W40).exercises[0]
+    assert calf.e1rm_kg is None
+    assert calf.top_set is not None and calf.top_set.weight_kg == 195.0
+    assert calf.volume_kg == pytest.approx(195 * 38)
+    history = exercise_history(
+        [_workout(W40, 0, [exercise])], "Calf Press (Machine)", weeks=1, ending=W40
+    )
+    assert history.weeks[0].e1rm_kg is None and history.weeks[0].top_set_kg == 195.0
+
+
+def test_e1rm_uses_the_best_set_at_or_under_ten_reps() -> None:
+    exercise = Exercise(
+        template_id="TPL00002",
+        title="Bench Press (Barbell)",
+        superset=False,
+        sets=(_set(SetKind.NORMAL, 60.0, 15, None), _set(SetKind.NORMAL, 80.0, 6, None)),
+    )
+    bench = week_figures([_workout(W40, 0, [exercise])], W40).exercises[0]
+    assert bench.e1rm_kg == pytest.approx(epley(80.0, 6), abs=0.05)
+
+
+def test_rep_pr_at_matched_load_against_prior_twelve_weeks() -> None:
+    # 90 kg for 6 reps four weeks ago, 90 kg for 8 reps this week: a rep PR at the same load.
+    earlier = _workout(W40.shift(-4), 0, [_bench(90.0, reps=6)])
+    this = _workout(W40, 0, [_bench(90.0, reps=8)])
+    bench = week_figures([earlier, this], W40).exercises[0]
+    assert bench.matched_load_prior_best_reps == 6
+    assert bench.rep_pr is True
+
+
+def test_no_rep_pr_when_reps_equal_or_load_is_new() -> None:
+    same = [
+        _workout(W40.shift(-2), 0, [_bench(90.0, reps=8)]),
+        _workout(W40, 0, [_bench(90.0, reps=8)]),
+    ]
+    bench = week_figures(same, W40).exercises[0]
+    assert bench.matched_load_prior_best_reps == 8 and bench.rep_pr is False
+    new_load = [
+        _workout(W40.shift(-2), 0, [_bench(85.0, reps=8)]),
+        _workout(W40, 0, [_bench(90.0, reps=8)]),
+    ]
+    bench = week_figures(new_load, W40).exercises[0]
+    assert bench.matched_load_prior_best_reps is None and bench.rep_pr is False
+
+
+def test_rep_pr_ignores_loads_older_than_twelve_weeks() -> None:
+    old = _workout(W40.shift(-13), 0, [_bench(90.0, reps=6)])
+    this = _workout(W40, 0, [_bench(90.0, reps=8)])
+    bench = week_figures([old, this], W40).exercises[0]
+    assert bench.matched_load_prior_best_reps is None and bench.rep_pr is False

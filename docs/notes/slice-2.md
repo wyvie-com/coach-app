@@ -54,3 +54,22 @@ No model call, no review, no cost. No e1RM alternative for high reps. No muscle-
 1. Why does an empty week inside the data count as zero sessions but a week before the first workout does not? Because the first is evidence of a missed week and the second is absence of evidence. A new account would otherwise start life with "four sessions missed" in its second week, which is a false alarm the negatives are designed to catch.
 2. The synthetic logs are built as Hevy JSON and pushed through the raw models. Why not construct the internal objects directly? Every test run then also exercises the conversion layer, and a schema change in Hevy that broke real pulls would break the eval cases on the same day, in CI, with no network.
 3. Epley gives a 325 kg calf press. Is the figure wrong? The arithmetic is right and the formula is the one the brief specifies; the assumption behind it, low-rep sets, does not hold for this athlete. The figure is still useful as a week-to-week index for the same exercise, which is how the trend and the four-week change use it, but it must never be presented as a lift the athlete could perform. Naming that limit in the prompt and the design note is the honest fix; choosing a different formula is a product decision, so it is listed as a later idea and raised at the gate.
+
+## Addendum, decided at the gate (2026-10-05)
+
+The product owner researched how Hevy and other apps estimate a one-rep max above ten reps (sources below, **Secondary**). Findings: Hevy's percentage table equals Epley up to 30 reps and then holds at 50 percent, with a general caution and no cut-off; Strong (Brzycki) and RepCount (Epley) estimate at every rep count and warn above 12 and 10 reps respectively; Reynolds, Gordon and Robergs (2006, Journal of Strength and Conditioning Research) found accuracy falling from 5RM to 20RM and concluded that "no more than 10 repetitions should be used in linear equations to estimate 1RM"; Shimano et al. (2006) found the reps achievable at a given percentage differ by exercise, so no single formula fits every lift at high reps. Best practice for a 12 to 20 rep log: a rep PR at a matched load as the main strength measure, weekly volume second, e1RM only from sets of about ten reps or fewer.
+
+Changes made before slice 3:
+
+- `E1RM_MAX_REPS = 10`: no e1RM is computed from a set above ten reps, in the week figures and in the history tool. Hevy keeps estimating; this project chooses the research position and says so in the module docstring.
+- New per-exercise figures `matched_load_prior_best_reps` and `rep_pr`: this week's top-set reps against the best reps at exactly that load in the prior twelve weeks. "new" when the load was never lifted in that window.
+- Five new tests (84 in total). The planted stories are unchanged because every synthetic working set is five reps.
+
+Live dry run after the change, week 2026-W40: 30 exercises, 9 with an e1RM, 0 rep PRs, 5 loads not lifted in the prior twelve weeks. The 325 kg calf press is gone; the calf press now shows "195 x 20, no PR (best 20)", which is what happened.
+
+Sources (supplied by the product owner, read with a browser outside this session):
+[Hevy help centre](https://help.hevyapp.com/hc/en-us/articles/36954464726167-Understanding-Your-Estimated-One-Rep-Max-1RM-in-Hevy) ·
+[Strong help](https://help.strongapp.io/article/133-1rm) ·
+[RepCount](https://www.repcountapp.com/articles/how-to-calculate-1rm) ·
+[Reynolds, Gordon and Robergs 2006](https://www.unm.edu/~rrobergs/478RMStrengthPrediction.pdf) ·
+[Shimano et al. 2006](https://ro.ecu.edu.au/ecuworks/2069/)
