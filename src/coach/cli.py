@@ -10,9 +10,11 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from coach import credentials, settings
+from coach.figures import format_table, week_figures
 from coach.hevy.client import HevyClient, HevyError
 from coach.hevy.pull import format_summary, pull
 from coach.hevy.store import PullStore
+from coach.model import WeekId, from_raw_pages
 
 #: Pull directories are named by the local date of the pull.
 LOCAL_ZONE = ZoneInfo("Australia/Melbourne")
@@ -44,6 +46,23 @@ def _pull(args: argparse.Namespace) -> int:
     return 0
 
 
+def _figures(args: argparse.Namespace) -> int:
+    store = PullStore(args.root)
+    pulled = store.latest()
+    if pulled is None:
+        print(f"no pull found under {args.root}; run `coach pull` first", file=sys.stderr)
+        return 1
+    today = datetime.now(LOCAL_ZONE).date()
+    week = WeekId.parse(args.week) if args.week else WeekId.of_date(today).shift(-1)
+    workouts = from_raw_pages(store.read_pages(pulled))
+    figures = week_figures(workouts, week)
+    print(f"pull {pulled.isoformat()}  workouts {len(workouts)}")
+    print(format_table(figures))
+    print()
+    print(figures.model_dump_json(indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the parser. Subcommands are added slice by slice."""
     parser = argparse.ArgumentParser(prog="coach", description="A personal AI training coach.")
@@ -59,6 +78,17 @@ def build_parser() -> argparse.ArgumentParser:
     pull_cmd.add_argument("--root", type=Path, default=Path("private/hevy"))
     pull_cmd.add_argument("--page-size", type=int, default=10, help="1 to 10 (Hevy's maximum)")
     pull_cmd.set_defaults(func=_pull)
+    figures_cmd = sub.add_parser(
+        "figures", help="Compute one ISO week's figures from the latest pull; no model call."
+    )
+    figures_cmd.add_argument("--week", help="ISO week such as 2026-W40; default is last week")
+    figures_cmd.add_argument("--root", type=Path, default=Path("private/hevy"))
+    figures_cmd.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Accepted for symmetry with the brief; figures never call a model.",
+    )
+    figures_cmd.set_defaults(func=_figures)
     return parser
 
 

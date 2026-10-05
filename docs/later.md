@@ -9,3 +9,5 @@ Things named during the build that are larger than this side project needs now. 
 - Using the SDK's `client.messages.parse()` helper once the two-step validation has been shown explicitly.
 - Message Batches for the eval harness (slice 6, optional).
 - A gitleaks configuration file with project-specific allow rules, if the default rules ever produce a false positive.
+- An e1RM formula that holds above ten reps, or a rule that reports no e1RM for sets above a rep ceiling. Epley overstates badly at 16 to 20 reps, which is most of my real training (seen in the slice 2 dry run).
+- Volume by muscle group, which needs `GET /v1/exercise_templates` for the `primary_muscle_group` field.

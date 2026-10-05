@@ -33,7 +33,8 @@ Consequences (**My reasoning**): pagination by page number until `page == page_c
 | Warm-up | `type == "warmup"` | Excluded from volume, top set, e1RM and trend; counted as `warmup_sets`. |
 | Superset | `superset_id` | A flag shown to the model; changes no figure. |
 | Bodyweight, cardio | null weight or distance/duration set | Count as sets and sessions; excluded from kg figures. |
-| Units | `weight_kg` | Always kg. `weight_unit` is read once for wording; nothing is converted. Notes and descriptions are never sent to the model. |
+| Units | `weight_kg` | Always kg. `weight_unit` is read once for wording; nothing is converted. |
+| Text | `title`, `notes`, `description` | Workout titles are sent to the model, truncated to 60 characters, because a title such as "Deload" is a legitimate signal. Notes and descriptions are never read. |
 
 ## 3. Architecture
 
@@ -46,7 +47,7 @@ Package `coach` under `src/coach/` (decided at the slice 0 gate: uv's build back
 | `hevy/models.py` | Pydantic raw shapes, strict on the fields we use, `extra="allow"` for the rest. |
 | `hevy/store.py` | Writes raw pages to `private/hevy/<date>/` plus a `manifest.json` of counts, route and docs date; reads them back. |
 | `model.py` | Internal `Workout, Exercise, Set, SetKind` and the mapping in 2.2. |
-| `figures.py` | Pure functions to `WeekFigures`: volume, top sets, Epley e1RM, trends over 1 to 12 weeks, sessions against the prior four-week mean. No I/O. |
+| `figures.py` | Pure functions to `WeekFigures`: volume, top sets (ties to more reps, then higher RPE), Epley e1RM (a single rep is its own max), trends over 1 to 12 weeks with empty weeks kept, sessions against the prior four-week mean (empty weeks count as zero, weeks before the first workout do not). No I/O. |
 | `review/schema.py` | The `Review` model, its JSON schema for `output_config.format`, and the `exercise_history` tool definition. |
 | `review/prompt.py` | The stable system prompt constant and the per-week user turn renderer. |
 | `review/loop.py` | The hand-written loop with a turn cap; returns a `ReviewRun` with every request's usage. |
