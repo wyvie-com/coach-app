@@ -173,6 +173,11 @@ def _sets(load: float, rpe: tuple[float, ...], reps: int = 5) -> list[dict]:
 def raw_workouts(case: Case) -> list[dict]:
     """The case as Hevy-shaped workout dicts, oldest first."""
     rng = random.Random(case.seed)
+    # Seeds vary the session minute and give each accessory one fixed load offset for the whole
+    # case. A per-week accessory wobble would plant accidental stories in the negatives.
+    accessory_offset = {
+        template_id: rng.choice((-2.5, 0.0, 2.5)) for template_id in sorted(ACCESSORIES)
+    }
     first_monday = REVIEW_WEEK.shift(-(WEEKS - 1)).monday()
     workouts = []
     for week in range(WEEKS):
@@ -191,7 +196,7 @@ def raw_workouts(case: Case) -> list[dict]:
             for index, (name, template_id, base) in enumerate(lifts):
                 load, rpe = _load_and_rpe(case.story, template_id, base, week)
                 if template_id in ACCESSORIES:
-                    load += rng.choice((-2.5, 0.0, 2.5))
+                    load += accessory_offset[template_id]
                 exercises.append(
                     {
                         "index": index,

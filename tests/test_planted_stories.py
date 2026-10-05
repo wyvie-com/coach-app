@@ -143,3 +143,11 @@ def test_expectations_name_sections_and_exercises() -> None:
     assert [(e.section, e.exercise) for e in case.expected] == [("concerns", BENCH)]
     assert _by_name(CASES, "missed_sessions-1").expected[0].exercise == "Overall"
     assert _by_name(CASES, "negative_quiet-1").expected == ()
+
+
+def test_accessories_do_not_wobble_week_to_week(built) -> None:
+    data = built["negative_quiet-1"]
+    for accessory in ("Lat Pulldown (Cable)", "Dumbbell Row"):
+        history = exercise_history(data.workouts, accessory, weeks=8, ending=data.review_week)
+        tops = [e.top_set_kg for e in history.weeks]
+        assert tops == sorted(tops), accessory  # monotonic, like the main lifts

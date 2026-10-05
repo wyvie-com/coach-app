@@ -10,6 +10,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from coach import credentials, settings
+from coach.evals.cases import CASES
+from coach.evals.harness import ensure_credentials, run_eval
+from coach.evals.report import render_markdown as render_eval
 from coach.figures import format_table, week_figures
 from coach.hevy.client import HevyClient, HevyError
 from coach.hevy.pull import format_summary, pull
@@ -94,6 +97,40 @@ def _review(args: argparse.Namespace) -> int:
     return 0 if run.outcome == "ok" else 1
 
 
+def _eval(args: argparse.Namespace) -> int:
+    try:
+        client = build_client(settings.anthropic_api_key())
+        ensure_credentials(client)
+    except (settings.MissingCredentialError, RuntimeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    cases = CASES
+    if args.cases:
+        wanted = set(args.cases.split(","))
+        cases = [c for c in CASES if c.name in wanted]
+        unknown = wanted - {c.name for c in cases}
+        if unknown:
+            print(f"unknown cases: {', '.join(sorted(unknown))}", file=sys.stderr)
+            return 1
+    models = args.model or [settings.review_model()]
+    stamp = datetime.now(LOCAL_ZONE).strftime("%Y%m%dT%H%M%S")
+    out_dir = args.out / stamp
+    report = run_eval(
+        cases=cases,
+        models=models,
+        trials=args.trials,
+        review_client=lambda _model: client,
+        grader_client=client,
+        grader_model=args.grader_model,
+        out_dir=out_dir,
+        log=print,
+    )
+    print()
+    print(render_eval(report).split("## Cases")[0])
+    print(f"written to {out_dir}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the parser. Subcommands are added slice by slice."""
     parser = argparse.ArgumentParser(prog="coach", description="A personal AI training coach.")
@@ -130,6 +167,19 @@ def build_parser() -> argparse.ArgumentParser:
     review_cmd.add_argument("--root", type=Path, default=Path("private/hevy"))
     review_cmd.add_argument("--out", type=Path, default=Path("out"))
     review_cmd.set_defaults(func=_review)
+    eval_cmd = sub.add_parser(
+        "eval", help="Run the evaluation suite; writes out/eval/<timestamp>/."
+    )
+    eval_cmd.add_argument(
+        "--model",
+        action="append",
+        help="Review model; repeat for a side-by-side report. Default: COACH_MODEL or Haiku.",
+    )
+    eval_cmd.add_argument("--trials", type=int, default=3)
+    eval_cmd.add_argument("--grader-model", default=settings.DEFAULT_MODEL)
+    eval_cmd.add_argument("--cases", help="Comma-separated case names; default all fifteen")
+    eval_cmd.add_argument("--out", type=Path, default=Path("out/eval"))
+    eval_cmd.set_defaults(func=_eval)
     return parser
 
 
