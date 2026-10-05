@@ -28,6 +28,10 @@ Decisions:
 
 `docs/notes/slice-6.md`. The loop became a resumable session so the batch path and the live path share one body; the suite runs as rounds of batches at half price. Verified live on four cases: 4 of 4 ok, $0.05, 16 minutes.
 
+## Step 6: the last complete real week again, on the final prompt
+
+Week 2026-W40 reviewed a second time on Haiku, after a fresh pull (612 workouts). Aggregates only: outcome ok, 7 turns, 6 tool calls (every exercise it put in concerns plus the two it praised), all 7 data checks passed including the new `comparisons_grounded`, $0.032 against $0.026 on 2026-10-05. It raised four concerns where the first review raised two and Opus three; every one of the four is a stall of four or more unchanged weeks or a four-week e1RM fall, which is what rule 2 now asks for. Real weeks have more exercises than the synthetic ones (twelve against six), so the model looks up more and the review costs more; the synthetic suite's one tool call per review does not transfer.
+
 ## Spend
 
 | Run | Trials | Cost |
@@ -37,6 +41,7 @@ Decisions:
 | step 3, pass 2: 16 cases, Sonnet grader | 16 | $0.39 |
 | step 3, pass 2 re-run of five cases | 5 | $0.12 |
 | step 4: four cases through batches | 4 | $0.05 |
+| step 6: real week 2026-W40 on the final prompt | 1 | $0.03 |
 | **total since v0.1.0** | | **$1.33** |
 
 Project total: $8.93 (slice 5 note) plus the table above.
