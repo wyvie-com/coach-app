@@ -25,7 +25,19 @@ My reasoning: a review is a tool loop, so one batch cannot hold a whole review. 
 
 ## Live verification
 
-Submitted 2026-10-06: four cases, one trial, Haiku reviews and Haiku grading, `--budget-usd 0.40`. Results are added here when the batches end.
+Four cases (steady progress, bench stall, missed sessions, quiet week), one trial, Haiku reviews and Haiku grading, `--budget-usd 0.40`.
+
+| | live run of 2026-10-06 (same prompt) | batched |
+| --- | --- | --- |
+| outcomes | ok | ok 4 of 4 |
+| code checks | | 9 of 9 passed on every trial |
+| review cost per review | $0.0103 | $0.0063 |
+| grader cost per review | $0.0138 | $0.0066 |
+| total for four trials | about $0.10 | $0.0515 |
+| wall time | about 1 minute | 16 minutes, five batches (four review rounds, one grading) |
+| grader thinking | enabled | enabled; the batch accepted the thinking request, no fallback needed |
+
+The review cost is not exactly half because tool calls per review differed (1.1 live, 1.5 here, on different cases). Each batch of four requests took two to five minutes to end; the API's "most within an hour" is the figure to plan around, not these.
 
 ## Interviewer questions
 

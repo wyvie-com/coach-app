@@ -24,6 +24,10 @@ Decisions:
 - **Exempt the leader from the universal-claim check.** "Led all exercises with 14.3%" by the exercise that leads is a ranking, which the leaders figure backs; the first version of the check failed it.
 - **Stop at two passes.** The remaining grader criticisms are percentages moved between fields of the same exercise. Fixing that means fewer fields in the figures, which is a design change for `docs/later.md`, not a third pass on this plan.
 
+## Step 4: Message Batches
+
+`docs/notes/slice-6.md`. The loop became a resumable session so the batch path and the live path share one body; the suite runs as rounds of batches at half price. Verified live on four cases: 4 of 4 ok, $0.05, 16 minutes.
+
 ## Spend
 
 | Run | Trials | Cost |
@@ -32,6 +36,7 @@ Decisions:
 | step 3, pass 1: 16 cases, Sonnet grader | 16 | $0.49 |
 | step 3, pass 2: 16 cases, Sonnet grader | 16 | $0.39 |
 | step 3, pass 2 re-run of five cases | 5 | $0.12 |
-| **total since v0.1.0** | | **$1.28** |
+| step 4: four cases through batches | 4 | $0.05 |
+| **total since v0.1.0** | | **$1.33** |
 
 Project total: $8.93 (slice 5 note) plus the table above.
