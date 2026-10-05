@@ -37,7 +37,7 @@ Consequences (**My reasoning**): pagination by page number until `page == page_c
 
 ## 3. Architecture
 
-Package `coach/`, one job per module, no agent framework.
+Package `coach` under `src/coach/` (decided at the slice 0 gate: uv's build backend defaults to the `src` layout and it stops tests importing the working copy by accident), one job per module, no agent framework.
 
 | Module | Owns |
 | --- | --- |

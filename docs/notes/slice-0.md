@@ -48,7 +48,7 @@ uv run coach check-credentials
 
 ## What it does not do yet
 
-No Hevy client, no pagination, no raw page store, no figures, no model call beyond listing models. The LICENSE names "the coach-app authors" as copyright holder pending your name. The first CI run failed on an unresolvable `astral-sh/setup-uv@v10` pin; the second run, with the exact tag, is reported in the slice 0 message.
+No Hevy client, no pagination, no raw page store, no figures, no model call beyond listing models. The LICENSE names the GitHub organisation `wyvie-com` as copyright holder (decided at the gate; a personal name can replace it). The first CI run failed on an unresolvable `astral-sh/setup-uv@v10` pin; the second run, with the exact tag, is reported in the slice 0 message.
 
 ## Three questions an interviewer might ask
 

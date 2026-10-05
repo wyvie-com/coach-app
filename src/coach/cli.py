@@ -5,8 +5,17 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from coach import credentials, settings
+from coach.hevy.client import HevyClient, HevyError
+from coach.hevy.pull import format_summary, pull
+from coach.hevy.store import PullStore
+
+#: Pull directories are named by the local date of the pull.
+LOCAL_ZONE = ZoneInfo("Australia/Melbourne")
 
 
 def _check_credentials(_: argparse.Namespace) -> int:
@@ -22,6 +31,19 @@ def _check_credentials(_: argparse.Namespace) -> int:
     return 0 if all(r.ok for r in results) else 1
 
 
+def _pull(args: argparse.Namespace) -> int:
+    client = HevyClient(settings.hevy_credential(), page_size=args.page_size)
+    try:
+        summary = pull(client, PullStore(args.root), today=datetime.now(LOCAL_ZONE).date())
+    except HevyError as exc:
+        print(f"pull failed: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        client.close()
+    print(format_summary(summary))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the parser. Subcommands are added slice by slice."""
     parser = argparse.ArgumentParser(prog="coach", description="A personal AI training coach.")
@@ -31,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="One request to each API; prints HTTP statuses and the Hevy route, nothing else.",
     )
     check.set_defaults(func=_check_credentials)
+    pull_cmd = sub.add_parser(
+        "pull", help="Fetch every workout page from Hevy into private/hevy/<date>/; prints counts."
+    )
+    pull_cmd.add_argument("--root", type=Path, default=Path("private/hevy"))
+    pull_cmd.add_argument("--page-size", type=int, default=10, help="1 to 10 (Hevy's maximum)")
+    pull_cmd.set_defaults(func=_pull)
     return parser
 
 
