@@ -17,6 +17,8 @@ def render_markdown(report: EvalReport) -> str:
         f"- cases: {len(report.cases)}, trials per case: {report.trials}",
         f"- grader: {report.grader_model}",
         f"- total cost: ${report.total_cost_usd:.4f}",
+        f"- mode: {report.mode}"
+        + (f" (batch ids: {', '.join(report.batch_ids)})" if report.batch_ids else ""),
     ]
     if report.stopped_early:
         lines.append(

@@ -58,3 +58,17 @@ def test_table_carries_its_source_and_date() -> None:
     assert pricing.READ_ON == "2026-10-05"
     for model in ("claude-sonnet-5-5", "claude-opus-5-5"):
         assert model in pricing.PRICES
+
+
+def test_batch_pricing_halves_every_component() -> None:
+    usage = Usage(
+        input_tokens=1000,
+        output_tokens=500,
+        cache_creation_input_tokens=200,
+        cache_read_input_tokens=300,
+    )
+    live = pricing.cost(usage, "claude-haiku-4-5-20251001")
+    batch = pricing.cost(usage, "claude-haiku-4-5-20251001", batch=True)
+    assert batch.total_usd == pytest.approx(live.total_usd / 2)
+    assert batch.output_usd == pytest.approx(live.output_usd / 2)
+    assert batch.cache_read_usd == pytest.approx(live.cache_read_usd / 2)

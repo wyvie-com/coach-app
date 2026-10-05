@@ -82,11 +82,16 @@ def price_for(model: str) -> Price:
         ) from None
 
 
-def cost(usage: Usage, model: str) -> Cost:
-    """Price one response's usage."""
+#: Message Batches: "All usage is charged at 50% of the standard API prices" (batch processing
+#: page, read 2026-10-06).
+BATCH_DISCOUNT = 0.5
+
+
+def cost(usage: Usage, model: str, *, batch: bool = False) -> Cost:
+    """Price one response's usage; ``batch`` applies the Message Batches discount."""
     key = normalise_model(model)
     price = price_for(key)
-    per = 1e-6
+    per = 1e-6 * (BATCH_DISCOUNT if batch else 1.0)
     writes_5m = usage.cache_creation_input_tokens or 0
     writes_1h = 0
     if usage.cache_creation is not None:

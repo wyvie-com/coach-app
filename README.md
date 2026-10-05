@@ -41,6 +41,7 @@ uv run coach figures --week 2026-W40 --dry-run  # no model call
 uv run coach review  --week 2026-W40            # out/2026-W40/, about two cents on Haiku
 uv run coach eval --trials 3                    # out/eval/<timestamp>/, about $1.50 on Haiku
 uv run coach eval --model claude-haiku-4-5-20251001 --model claude-sonnet-5-5 --trials 3
+uv run coach eval --trials 3 --batch              # same suite through Message Batches, half price, minutes to hours
 uv run coach rescore out/eval/<timestamp>/trials.jsonl --strict-grounding
 ```
 

@@ -7,7 +7,6 @@ Things named during the build that are larger than this side project needs now. 
 - Configurable time zone instead of the `Australia/Melbourne` constant.
 - Incremental sync with `GET /v1/workouts/events?since=` instead of a full pull each time.
 - Using the SDK's `client.messages.parse()` helper once the two-step validation has been shown explicitly.
-- Message Batches for the eval harness (slice 6, optional).
 - A gitleaks configuration file with project-specific allow rules, if the default rules ever produce a false positive.
 - Weekly hard sets per muscle group as a volume measure, which needs `GET /v1/exercise_templates` for `primary_muscle_group` (the research brought to the slice 2 gate names it the second metric for a high-rep log).
 - Volume by muscle group, which needs `GET /v1/exercise_templates` for the `primary_muscle_group` field.

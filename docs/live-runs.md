@@ -10,9 +10,10 @@ uv run coach pull                              # private/hevy/<date>/, prints co
 uv run coach figures --week 2026-W40 --dry-run # table and JSON, no model call
 uv run coach review  --week 2026-W40           # out/2026-W40/, prints the review, the run and the data checks
 uv run coach eval --trials 3                   # out/eval/<timestamp>/, same model as the review by default
+uv run coach eval --trials 3 --batch           # the same through the Message Batches API at half price; wait, do not watch
 ```
 
-Run `review` once per week you want covered; `eval` once per prompt or model change. Add `--model claude-sonnet-5-5` to either for the comparison model, and `--model` twice to `eval` for a side-by-side report.
+Run `review` once per week you want covered; `eval` once per prompt or model change. Prefer `--batch` for a full run: it costs half, and the report lists the batch ids, whose results the API keeps for 29 days if the session dies while waiting. Add `--model claude-sonnet-5-5` to either for the comparison model, and `--model` twice to `eval` for a side-by-side report.
 
 ## What to look at afterwards
 

@@ -42,6 +42,7 @@ Outcome = Literal[
     "invalid_json",
     "schema_invalid",
     "turn_cap",
+    "api_error",
 ]
 
 
@@ -149,45 +150,63 @@ def _run_tool(
     )
 
 
-def run_review(
-    client: ClaudeClient,
-    model: str,
-    figures: WeekFigures,
-    workouts: Sequence[Workout],
-    *,
-    turn_cap: int = TURN_CAP,
-    max_tokens: int = MAX_TOKENS,
-    clock: Callable[[], float] = time.perf_counter,
-) -> ReviewRun:
-    """Run the loop for one week and return everything it produced."""
-    started = clock()
-    request = build_request(model, figures, max_tokens=max_tokens)
-    messages: list[dict[str, Any]] = request["messages"]
-    ending = WeekId.parse(figures.week)
-    tool_calls: list[ToolCall] = []
-    requests: list[RequestUsage] = []
-    costs: list[Cost] = []
+class ReviewSession:
+    """One review as a resumable state machine: ask for the next request, hand back the response.
 
-    def finish(outcome: Outcome, **extra: Any) -> ReviewRun:
-        return ReviewRun(
-            outcome=outcome,
-            model=model,
-            review=extra.pop("review", None),
-            raw_text=extra.pop("raw_text", None),
-            turns=len(requests),
-            tool_calls=tool_calls,
-            requests=requests,
-            cost=Cost.total(costs, model),
-            seconds=clock() - started,
-            **extra,
-        )
+    The live loop and the batch runner both drive this, so the stop-reason rules exist once.
+    ``next_request`` returns None once the run has finished; ``result`` then has the run.
+    """
 
-    for _ in range(turn_cap):
+    def __init__(
+        self,
+        model: str,
+        figures: WeekFigures,
+        workouts: Sequence[Workout],
+        *,
+        turn_cap: int = TURN_CAP,
+        max_tokens: int = MAX_TOKENS,
+        batch: bool = False,
+        clock: Callable[[], float] = time.perf_counter,
+    ) -> None:
+        self.model = model
+        self.workouts = workouts
+        self.turn_cap = turn_cap
+        self.batch = batch
+        self.clock = clock
+        self.started = clock()
+        self.request = build_request(model, figures, max_tokens=max_tokens)
+        self.messages: list[dict[str, Any]] = self.request["messages"]
+        self.ending = WeekId.parse(figures.week)
+        self.tool_calls: list[ToolCall] = []
+        self.requests: list[RequestUsage] = []
+        self.costs: list[Cost] = []
+        self.run: ReviewRun | None = None
+
+    def next_request(self) -> dict[str, Any] | None:
+        """The next Messages request, or None when the run is over."""
+        if self.run is not None:
+            return None
+        if len(self.requests) >= self.turn_cap:
+            self._finish("turn_cap", error=f"no final answer after {self.turn_cap} turns")
+            return None
         # A fresh copy per request, so a recorded request is a snapshot and not a live list.
-        response = client.messages.create(**{**request, "messages": list(messages)})
-        request_cost = price(response.usage, response.model)
-        costs.append(request_cost)
-        requests.append(
+        return {**self.request, "messages": list(self.messages)}
+
+    def result(self) -> ReviewRun:
+        """The finished run. Only valid once ``next_request`` has returned None."""
+        if self.run is None:
+            raise RuntimeError("the review has not finished")
+        return self.run
+
+    def fail(self, error: str) -> None:
+        """End the run because the request itself failed (an API or batch error)."""
+        self._finish("api_error", error=error)
+
+    def receive(self, response: Message) -> None:
+        """Account for one response and either queue the next step or finish."""
+        request_cost = price(response.usage, response.model, batch=self.batch)
+        self.costs.append(request_cost)
+        self.requests.append(
             RequestUsage(
                 model=response.model,
                 input_tokens=response.usage.input_tokens or 0,
@@ -201,22 +220,25 @@ def run_review(
         # Stop reasons first. Content is read only when the stop reason says it is complete.
         if response.stop_reason == "refusal":
             details = response.stop_details.model_dump() if response.stop_details else None
-            return finish("refusal", stop_details=details)
+            self._finish("refusal", stop_details=details)
+            return
         if response.stop_reason == "max_tokens":
-            return finish("max_tokens", raw_text=_text(response))
+            self._finish("max_tokens", raw_text=_text(response))
+            return
         if response.stop_reason == "model_context_window_exceeded":
-            return finish("context_exceeded", raw_text=_text(response))
+            self._finish("context_exceeded", raw_text=_text(response))
+            return
 
-        messages.append({"role": "assistant", "content": response.content})
+        self.messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason == "pause_turn":
-            continue
+            return
         if response.stop_reason == "tool_use":
             results = []
             for block in response.content:
                 if isinstance(block, ToolUseBlock):
-                    text, is_error, record = _run_tool(block, workouts, ending)
-                    tool_calls.append(record)
+                    text, is_error, record = _run_tool(block, self.workouts, self.ending)
+                    self.tool_calls.append(record)
                     result: dict[str, Any] = {
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -225,20 +247,54 @@ def run_review(
                     if is_error:
                         result["is_error"] = True
                     results.append(result)
-            messages.append({"role": "user", "content": results})
-            continue
+            self.messages.append({"role": "user", "content": results})
+            return
 
         raw = _text(response)
         if not raw.strip():
-            return finish("no_text", raw_text=raw, error="the response had no text block")
+            self._finish("no_text", raw_text=raw, error="the response had no text block")
+            return
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError as exc:
-            return finish("invalid_json", raw_text=raw, error=f"invalid JSON: {exc}")
+            self._finish("invalid_json", raw_text=raw, error=f"invalid JSON: {exc}")
+            return
         try:
             review = Review.model_validate(payload)
         except ValidationError as exc:
-            return finish("schema_invalid", raw_text=raw, error=str(exc))
-        return finish("ok", review=review, raw_text=raw)
+            self._finish("schema_invalid", raw_text=raw, error=str(exc))
+            return
+        self._finish("ok", review=review, raw_text=raw)
 
-    return finish("turn_cap", error=f"no final answer after {turn_cap} turns")
+    def _finish(self, outcome: Outcome, **extra: Any) -> None:
+        self.run = ReviewRun(
+            outcome=outcome,
+            model=self.model,
+            review=extra.pop("review", None),
+            raw_text=extra.pop("raw_text", None),
+            turns=len(self.requests),
+            tool_calls=self.tool_calls,
+            requests=self.requests,
+            cost=Cost.total(self.costs, self.model),
+            seconds=self.clock() - self.started,
+            **extra,
+        )
+
+
+def run_review(
+    client: ClaudeClient,
+    model: str,
+    figures: WeekFigures,
+    workouts: Sequence[Workout],
+    *,
+    turn_cap: int = TURN_CAP,
+    max_tokens: int = MAX_TOKENS,
+    clock: Callable[[], float] = time.perf_counter,
+) -> ReviewRun:
+    """Run the loop for one week, live, and return everything it produced."""
+    session = ReviewSession(
+        model, figures, workouts, turn_cap=turn_cap, max_tokens=max_tokens, clock=clock
+    )
+    while (request := session.next_request()) is not None:
+        session.receive(client.messages.create(**request))
+    return session.result()

@@ -27,10 +27,12 @@ import anthropic
 from anthropic.types import Message, TextBlock
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from coach.figures import ExerciseHistory, WeekFigures
+from coach.figures import ExerciseHistory, UnknownExerciseError, WeekFigures, exercise_history
+from coach.model import WeekId, Workout
 from coach.pricing import Cost, normalise_model
 from coach.pricing import cost as price
 from coach.review.client import ClaudeClient
+from coach.review.loop import ToolCall
 from coach.review.schema import Review
 
 RUBRIC = ("follows_from_data", "specific", "safe", "concise")
@@ -128,12 +130,31 @@ def grader_thinking(model: str) -> dict[str, Any] | None:
     return None
 
 
-def _request(
+def histories_for(
+    tool_calls: Sequence[ToolCall], workouts: Sequence[Workout], week: str
+) -> list[ExerciseHistory]:
+    """Recompute what each successful tool call returned, so the grader sees what the model saw."""
+    ending = WeekId.parse(week)
+    out: list[ExerciseHistory] = []
+    for call in tool_calls:
+        if call.is_error or call.weeks is None:
+            continue
+        try:
+            out.append(exercise_history(workouts, call.exercise, weeks=call.weeks, ending=ending))
+        except (UnknownExerciseError, ValueError):
+            continue
+    return out
+
+
+def grader_request(
     model: str,
     figures: WeekFigures,
     review: Review,
     histories: Sequence[ExerciseHistory],
+    *,
+    thinking: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """The grader's one request; ``thinking`` is added when given."""
     looked_up = "\n".join(h.model_dump_json() for h in histories) or "(none)"
     user = (
         f"Figures for ISO week {figures.week}:\n{figures.model_dump_json()}\n\n"
@@ -141,39 +162,30 @@ def _request(
         f"Review:\n{review.model_dump_json()}\n\n"
         "Score the review."
     )
-    return {
+    request = {
         "model": model,
         "max_tokens": GRADER_MAX_TOKENS,
         "system": [{"type": "text", "text": GRADER_SYSTEM, "cache_control": {"type": "ephemeral"}}],
         "output_config": {"format": {"type": "json_schema", "schema": GRADER_JSON_SCHEMA}},
         "messages": [{"role": "user", "content": user}],
     }
+    if thinking:
+        request["thinking"] = thinking
+    return request
 
 
 def _text(message: Message) -> str:
     return "".join(b.text for b in message.content if isinstance(b, TextBlock))
 
 
-def grade(
-    client: ClaudeClient,
-    model: str,
-    figures: WeekFigures,
-    review: Review,
-    histories: Sequence[ExerciseHistory] = (),
+ThinkingMode = Literal["enabled", "off", "off_after_400"]
+
+
+def parse_grade(
+    response: Message, model: str, mode: ThinkingMode, *, batch: bool = False
 ) -> GradeResult:
-    """Grade one review. One request, or two if the thinking configuration is rejected."""
-    request = _request(model, figures, review, histories)
-    thinking = grader_thinking(model)
-    mode: Literal["enabled", "off", "off_after_400"] = "enabled" if thinking else "off"
-    costs: list[Cost] = []
-    try:
-        response = client.messages.create(**request, **({"thinking": thinking} if thinking else {}))
-    except anthropic.BadRequestError:
-        if thinking is None:
-            raise
-        mode = "off_after_400"
-        response = client.messages.create(**request)
-    costs.append(price(response.usage, response.model))
+    """Turn the grader's response into a verdict, reading the stop reason first."""
+    request_cost = price(response.usage, response.model, batch=batch)
     details = response.usage.output_tokens_details
     thinking_tokens = getattr(details, "thinking_tokens", None) if details else None
 
@@ -185,7 +197,7 @@ def grade(
             reasons=extra.pop("reasons", None),
             thinking=mode,
             thinking_tokens=thinking_tokens,
-            cost=Cost.total(costs, normalise_model(model)),
+            cost=Cost.total([request_cost], normalise_model(model)),
             **extra,
         )
 
@@ -210,3 +222,25 @@ def grade(
         scores={dim: getattr(output, dim).score for dim in RUBRIC},
         reasons={dim: getattr(output, dim).reason for dim in RUBRIC},
     )
+
+
+def grade(
+    client: ClaudeClient,
+    model: str,
+    figures: WeekFigures,
+    review: Review,
+    histories: Sequence[ExerciseHistory] = (),
+) -> GradeResult:
+    """Grade one review live. One request, or two if the thinking configuration is rejected."""
+    thinking = grader_thinking(model)
+    mode: ThinkingMode = "enabled" if thinking else "off"
+    try:
+        response = client.messages.create(
+            **grader_request(model, figures, review, histories, thinking=thinking)
+        )
+    except anthropic.BadRequestError:
+        if thinking is None:
+            raise
+        mode = "off_after_400"
+        response = client.messages.create(**grader_request(model, figures, review, histories))
+    return parse_grade(response, model, mode)

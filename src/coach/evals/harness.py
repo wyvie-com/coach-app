@@ -19,14 +19,14 @@ import anthropic
 from pydantic import BaseModel, ConfigDict
 
 from coach import credentials
-from coach.evals.cases import Case, build_case
+from coach.evals.batch import BatchRunner, run_trials_batched
+from coach.evals.cases import BuiltCase, Case, build_case
 from coach.evals.checks import CHECK_NAMES, run_checks
-from coach.evals.grader import RUBRIC, grade
-from coach.figures import ExerciseHistory, UnknownExerciseError, exercise_history, week_figures
-from coach.model import WeekId, Workout
+from coach.evals.grader import RUBRIC, GradeResult, grade, histories_for
+from coach.figures import week_figures
 from coach.pricing import normalise_model
 from coach.review.client import ClaudeClient
-from coach.review.loop import run_review
+from coach.review.loop import ReviewRun, run_review
 
 
 class CheckSummary(BaseModel):
@@ -111,6 +111,10 @@ class EvalReport(BaseModel):
     total_cost_usd: float
     #: Set when an API error ended the run before every trial ran; the report covers what ran.
     stopped_early: str | None = None
+    #: "live" for one request at a time; "batch" for the Message Batches API at half price.
+    mode: str = "live"
+    #: Batch ids, so results can be fetched again from the API for 29 days.
+    batch_ids: list[str] = []
 
 
 #: Mean cost of one trial (review plus Haiku grading) on the 2026-10-05 runs; for estimates only.
@@ -129,20 +133,6 @@ def ensure_credentials(client: ClaudeClient) -> None:
         raise RuntimeError(
             f"Anthropic credential check failed: status {result.status} ({result.detail})"
         )
-
-
-def _histories(run_tool_calls, workouts: Sequence[Workout], week: str) -> list[ExerciseHistory]:
-    """Recompute what each successful tool call returned, so the grader sees what the model saw."""
-    ending = WeekId.parse(week)
-    out: list[ExerciseHistory] = []
-    for call in run_tool_calls:
-        if call.is_error or call.weeks is None:
-            continue
-        try:
-            out.append(exercise_history(workouts, call.exercise, weeks=call.weeks, ending=ending))
-        except (UnknownExerciseError, ValueError):
-            continue
-    return out
 
 
 def _order(models: Sequence[str]) -> list[str]:
@@ -194,6 +184,77 @@ def _summarise(trials: list[TrialRecord], case_names: list[str]) -> ModelSummary
     )
 
 
+def _record(
+    data: BuiltCase,
+    trial: int,
+    model: str,
+    run: ReviewRun,
+    results,
+    graded: GradeResult | None,
+    seconds: float,
+) -> TrialRecord:
+    return TrialRecord(
+        case=data.case.name,
+        trial=trial,
+        model=model,
+        outcome=run.outcome,
+        checks={r.name: r.passed for r in results},
+        check_details={r.name: r.detail for r in results if not r.passed},
+        grade_outcome=None if graded is None else graded.outcome,
+        scores=None if graded is None else graded.scores,
+        grade_reasons=None if graded is None else graded.reasons,
+        grader_thinking=None if graded is None else graded.thinking,
+        review=None if run.review is None else run.review.model_dump(mode="json"),
+        tool_call_log=[c.model_dump(mode="json") for c in run.tool_calls],
+        tool_calls=len(run.tool_calls),
+        tool_errors=sum(1 for c in run.tool_calls if c.is_error),
+        turns=run.turns,
+        seconds=seconds,
+        review_cost_usd=run.cost.total_usd,
+        grader_cost_usd=0.0 if graded is None else graded.cost.total_usd,
+    )
+
+
+def _api_error_record(
+    case: str, trial: int, model: str, detail: str, seconds: float
+) -> TrialRecord:
+    """A trial that never got a review because the request itself failed."""
+    return TrialRecord(
+        case=case,
+        trial=trial,
+        model=model,
+        outcome="api_error",
+        checks=dict.fromkeys(CHECK_NAMES, False),
+        check_details=dict.fromkeys(CHECK_NAMES, detail),
+        grade_outcome=None,
+        scores=None,
+        grade_reasons=None,
+        grader_thinking=None,
+        review=None,
+        tool_call_log=[],
+        tool_calls=0,
+        tool_errors=0,
+        turns=0,
+        seconds=seconds,
+        review_cost_usd=0.0,
+        grader_cost_usd=0.0,
+    )
+
+
+def _append(jsonl: Path, record: TrialRecord) -> None:
+    with jsonl.open("a") as handle:
+        handle.write(record.model_dump_json() + "\n")
+
+
+def _describe(record: TrialRecord, spent: float) -> str:
+    failed = [n for n, ok in record.checks.items() if not ok]
+    return (
+        f"{record.model} {record.case} t{record.trial}: {record.outcome}, "
+        f"{len(failed)} failed{' (' + ', '.join(failed) + ')' if failed else ''}, "
+        f"${record.review_cost_usd + record.grader_cost_usd:.4f} (run ${spent:.2f})"
+    )
+
+
 def run_eval(
     *,
     cases: Sequence[Case],
@@ -205,11 +266,14 @@ def run_eval(
     out_dir: Path,
     log: Callable[[str], None] = lambda _: None,
     budget_usd: float | None = None,
+    batch: BatchRunner | None = None,
 ) -> EvalReport:
     """Run the suite and write trials.jsonl, report.json and report.md under out_dir.
 
     ``budget_usd`` stops the run, after the trial that crosses it, so an estimate that
-    was wrong costs one trial rather than the rest of the run.
+    was wrong costs one trial rather than the rest of the run. With ``batch`` the whole
+    model's trials go through the Message Batches API in rounds; a batch cannot be
+    stopped part-way, so there the cap is checked between models only.
     """
     from coach.evals.report import render_markdown  # local import: report imports this module
 
@@ -222,8 +286,20 @@ def run_eval(
     for model in _order(models):
         if stopped_early:
             break
-        client = review_client(model)
         records: list[TrialRecord] = []
+        if batch is not None:
+            records, spent, stopped_early = _run_model_batched(
+                batch, model, built, trials, grader_model, jsonl, log, spent, budget_usd
+            )
+            reports.append(
+                ModelReport(
+                    model=model,
+                    summary=_summarise(records, [c.name for c in cases]),
+                    trials=records,
+                )
+            )
+            continue
+        client = review_client(model)
         for data in built:
             if stopped_early:
                 break
@@ -239,7 +315,7 @@ def run_eval(
                             grader_model,
                             figures,
                             run.review,
-                            _histories(run.tool_calls, data.workouts, figures.week),
+                            histories_for(run.tool_calls, data.workouts, figures.week),
                         )
                         if run.review
                         else None
@@ -248,62 +324,24 @@ def run_eval(
                     # Billing, auth, outage: record it as a trial so the paid work is kept, then
                     # stop. Continuing would fail every remaining trial the same way.
                     stopped_early = f"{model} {data.case.name} trial {trial}: {type(exc).__name__}"
-                    detail = f"api error: {exc}"
-                    record = TrialRecord(
-                        case=data.case.name,
-                        trial=trial,
-                        model=model,
-                        outcome="api_error",
-                        checks=dict.fromkeys(CHECK_NAMES, False),
-                        check_details=dict.fromkeys(CHECK_NAMES, detail),
-                        grade_outcome=None,
-                        scores=None,
-                        grade_reasons=None,
-                        grader_thinking=None,
-                        review=None,
-                        tool_call_log=[],
-                        tool_calls=0,
-                        tool_errors=0,
-                        turns=0,
-                        seconds=time.perf_counter() - started,
-                        review_cost_usd=0.0,
-                        grader_cost_usd=0.0,
+                    record = _api_error_record(
+                        data.case.name,
+                        trial,
+                        model,
+                        f"api error: {exc}",
+                        time.perf_counter() - started,
                     )
                     records.append(record)
-                    with jsonl.open("a") as handle:
-                        handle.write(record.model_dump_json() + "\n")
+                    _append(jsonl, record)
                     log(f"{stopped_early}; stopping. {exc}")
                     break
-                record = TrialRecord(
-                    case=data.case.name,
-                    trial=trial,
-                    model=model,
-                    outcome=run.outcome,
-                    checks={r.name: r.passed for r in results},
-                    check_details={r.name: r.detail for r in results if not r.passed},
-                    grade_outcome=None if graded is None else graded.outcome,
-                    scores=None if graded is None else graded.scores,
-                    grade_reasons=None if graded is None else graded.reasons,
-                    grader_thinking=None if graded is None else graded.thinking,
-                    review=None if run.review is None else run.review.model_dump(mode="json"),
-                    tool_call_log=[c.model_dump(mode="json") for c in run.tool_calls],
-                    tool_calls=len(run.tool_calls),
-                    tool_errors=sum(1 for c in run.tool_calls if c.is_error),
-                    turns=run.turns,
-                    seconds=time.perf_counter() - started,
-                    review_cost_usd=run.cost.total_usd,
-                    grader_cost_usd=0.0 if graded is None else graded.cost.total_usd,
+                record = _record(
+                    data, trial, model, run, results, graded, time.perf_counter() - started
                 )
                 records.append(record)
-                with jsonl.open("a") as handle:
-                    handle.write(record.model_dump_json() + "\n")
-                failed = [n for n, ok in record.checks.items() if not ok]
+                _append(jsonl, record)
                 spent += record.review_cost_usd + record.grader_cost_usd
-                log(
-                    f"{model} {record.case} t{trial}: {record.outcome}, "
-                    f"{len(failed)} failed{' (' + ', '.join(failed) + ')' if failed else ''}, "
-                    f"${record.review_cost_usd + record.grader_cost_usd:.4f} (run ${spent:.2f})"
-                )
+                log(_describe(record, spent))
                 if budget_usd is not None and spent > budget_usd:
                     stopped_early = (
                         f"{model} {data.case.name} trial {trial}: budget ${budget_usd:.2f} "
@@ -324,7 +362,55 @@ def run_eval(
         models=reports,
         total_cost_usd=sum(r.summary.cost_total_usd for r in reports),
         stopped_early=stopped_early,
+        mode="batch" if batch is not None else "live",
+        batch_ids=[] if batch is None else list(batch.batch_ids),
     )
     (out_dir / "report.json").write_text(report.model_dump_json(indent=2) + "\n")
     (out_dir / "report.md").write_text(render_markdown(report))
     return report
+
+
+def _run_model_batched(
+    batch: BatchRunner,
+    model: str,
+    built: Sequence[BuiltCase],
+    trials: int,
+    grader_model: str,
+    jsonl: Path,
+    log: Callable[[str], None],
+    spent: float,
+    budget_usd: float | None,
+) -> tuple[list[TrialRecord], float, str | None]:
+    """One model's trials through batches. Records are written once the batches end."""
+    started = time.perf_counter()
+    records: list[TrialRecord] = []
+    try:
+        done = run_trials_batched(
+            batch, model=model, built=built, trials=trials, grader_model=grader_model, log=log
+        )
+    except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
+        # Nothing was bought that the API will not keep: a submitted batch's results stay
+        # readable by id for 29 days, and the ids are logged as they are created.
+        stopped = f"{model} batch: {type(exc).__name__}"
+        for data in built:
+            for trial in range(1, trials + 1):
+                record = _api_error_record(data.case.name, trial, model, f"api error: {exc}", 0.0)
+                records.append(record)
+                _append(jsonl, record)
+        log(f"{stopped}; stopping. {exc}")
+        return records, spent, stopped
+    elapsed = time.perf_counter() - started
+    for item in done:
+        results = run_checks(item.data.case, item.figures, item.run, item.data.workouts)
+        record = _record(
+            item.data, item.trial, model, item.run, results, item.graded, elapsed / len(done)
+        )
+        records.append(record)
+        _append(jsonl, record)
+        spent += record.review_cost_usd + record.grader_cost_usd
+        log(_describe(record, spent))
+    stopped = None
+    if budget_usd is not None and spent > budget_usd:
+        stopped = f"{model}: budget ${budget_usd:.2f} exceeded (${spent:.2f}) after its batches"
+        log(f"{stopped}; no further model will run.")
+    return records, spent, stopped

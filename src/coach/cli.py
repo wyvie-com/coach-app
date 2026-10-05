@@ -10,6 +10,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from coach import credentials, settings
+from coach.evals.batch import BatchRunner
 from coach.evals.cases import CASES
 from coach.evals.checks import run_data_checks
 from coach.evals.harness import ensure_credentials, estimate_usd, run_eval
@@ -122,10 +123,18 @@ def _eval(args: argparse.Namespace) -> int:
             return 1
     models = args.model or [settings.review_model()]
     estimate = estimate_usd(cases=len(cases), trials=args.trials, models=len(models))
+    if args.batch:
+        estimate *= 0.5
     print(
         f"estimated spend about ${estimate:.2f} for {len(cases)} cases x {args.trials} trials "
         f"x {len(models)} model(s)"
+        + ("; Message Batches at half price" if args.batch else "")
         + (f"; budget cap ${args.budget_usd:.2f}" if args.budget_usd is not None else "")
+    )
+    runner = (
+        BatchRunner(client.messages.batches, poll_seconds=args.poll_seconds, log=print)
+        if args.batch
+        else None
     )
     stamp = datetime.now(LOCAL_ZONE).strftime("%Y%m%dT%H%M%S")
     out_dir = args.out / stamp
@@ -139,6 +148,7 @@ def _eval(args: argparse.Namespace) -> int:
         out_dir=out_dir,
         log=print,
         budget_usd=args.budget_usd,
+        batch=runner,
     )
     print()
     print(render_eval(report).split("## Cases")[0])
@@ -198,6 +208,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--budget-usd",
         type=float,
         help="Stop after the trial that takes the run's spend past this.",
+    )
+    eval_cmd.add_argument(
+        "--batch",
+        action="store_true",
+        help="Run through the Message Batches API: half price, results in rounds, no hurry",
+    )
+    eval_cmd.add_argument(
+        "--poll-seconds", type=float, default=30.0, help="How often to check a batch (default 30)"
     )
     eval_cmd.set_defaults(func=_eval)
     rescore_cmd = sub.add_parser(

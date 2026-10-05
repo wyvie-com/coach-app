@@ -266,3 +266,25 @@ def test_system_prompt_governs_comparisons_and_windows() -> None:
     assert "volume_change_1w_pct" in SYSTEM_PROMPT
     assert "leaders" in SYSTEM_PROMPT and "counts" in SYSTEM_PROMPT
     assert "four weeks" in SYSTEM_PROMPT and "eight weeks" in SYSTEM_PROMPT
+
+
+def test_review_session_can_be_driven_step_by_step_and_priced_as_a_batch() -> None:
+    from coach.review.loop import ReviewSession
+
+    data = build_case(next(c for c in CASES if c.name == "bench_stall-1"))
+    figures = week_figures(data.workouts, data.review_week)
+    live = ReviewSession(MODEL, figures, data.workouts)
+    batch = ReviewSession(MODEL, figures, data.workouts, batch=True)
+    for session in (live, batch):
+        first = session.next_request()
+        assert first is not None and len(first["messages"]) == 1
+        session.receive(_tool_use(BENCH, 5))
+        second = session.next_request()
+        assert second is not None and len(second["messages"]) == 3  # user, assistant, tool result
+        session.receive(_final(json.dumps(_good_review())))
+        assert session.next_request() is None
+        assert session.result().outcome == "ok" and session.result().turns == 2
+    assert batch.result().cost.total_usd == pytest.approx(live.result().cost.total_usd / 2)
+    failed = ReviewSession(MODEL, figures, data.workouts)
+    failed.fail("batch request errored: invalid_request_error")
+    assert failed.next_request() is None and failed.result().outcome == "api_error"
