@@ -17,6 +17,12 @@ def render_markdown(report: EvalReport) -> str:
         f"- cases: {len(report.cases)}, trials per case: {report.trials}",
         f"- grader: {report.grader_model}",
         f"- total cost: ${report.total_cost_usd:.4f}",
+    ]
+    if report.stopped_early:
+        lines.append(
+            f"- **stopped early** at {report.stopped_early}; the tables cover the trials that ran"
+        )
+    lines += [
         "",
         "## Summary",
         "",

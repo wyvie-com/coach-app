@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import anthropic
 from pydantic import BaseModel, ConfigDict
 
 from coach import credentials
@@ -107,6 +108,8 @@ class EvalReport(BaseModel):
     cases: list[str]
     models: list[ModelReport]
     total_cost_usd: float
+    #: Set when an API error ended the run before every trial ran; the report covers what ran.
+    stopped_early: str | None = None
 
 
 def ensure_credentials(client: ClaudeClient) -> None:
@@ -185,18 +188,56 @@ def run_eval(
     jsonl = out_dir / "trials.jsonl"
     built = [build_case(case) for case in cases]
     reports: list[ModelReport] = []
+    stopped_early: str | None = None
     for model in _order(models):
+        if stopped_early:
+            break
         client = review_client(model)
         records: list[TrialRecord] = []
         for data in built:
+            if stopped_early:
+                break
             figures = week_figures(data.workouts, data.review_week)
             for trial in range(1, trials + 1):
                 started = time.perf_counter()
-                run = run_review(client, model, figures, data.workouts)
-                results = run_checks(data.case, figures, run, data.workouts)
-                graded = (
-                    grade(grader_client, grader_model, figures, run.review) if run.review else None
-                )
+                try:
+                    run = run_review(client, model, figures, data.workouts)
+                    results = run_checks(data.case, figures, run, data.workouts)
+                    graded = (
+                        grade(grader_client, grader_model, figures, run.review)
+                        if run.review
+                        else None
+                    )
+                except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
+                    # Billing, auth, outage: record it as a trial so the paid work is kept, then
+                    # stop. Continuing would fail every remaining trial the same way.
+                    stopped_early = f"{model} {data.case.name} trial {trial}: {type(exc).__name__}"
+                    detail = f"api error: {exc}"
+                    record = TrialRecord(
+                        case=data.case.name,
+                        trial=trial,
+                        model=model,
+                        outcome="api_error",
+                        checks=dict.fromkeys(CHECK_NAMES, False),
+                        check_details=dict.fromkeys(CHECK_NAMES, detail),
+                        grade_outcome=None,
+                        scores=None,
+                        grade_reasons=None,
+                        grader_thinking=None,
+                        review=None,
+                        tool_call_log=[],
+                        tool_calls=0,
+                        tool_errors=0,
+                        turns=0,
+                        seconds=time.perf_counter() - started,
+                        review_cost_usd=0.0,
+                        grader_cost_usd=0.0,
+                    )
+                    records.append(record)
+                    with jsonl.open("a") as handle:
+                        handle.write(record.model_dump_json() + "\n")
+                    log(f"{stopped_early}; stopping. {exc}")
+                    break
                 record = TrialRecord(
                     case=data.case.name,
                     trial=trial,

@@ -72,7 +72,7 @@ Free text would need a parser, and a parser would need a retry when the text did
 | review cost | $0.018 | $0.033 |
 | seconds | 30 | 40 |
 
-Haiku's only systematic miss was a five-week bench stall it called "steady". The prompt now defines "stalled"; `docs/findings.md` records whether that closed the gap. Sonnet is 1.8 times the price and was never wrong on the synthetic stories. For a personal tool run once a week the difference is four cents a month, so cost is not the deciding factor; the deciding factor is that the eval suite exists to measure the gap rather than assume it, and the default should be the model whose weaknesses the checks can catch. Haiku's can. A real deployment would pick per the table, not per taste.
+Haiku's only systematic miss was a five-week bench stall it called "steady". With the prompt defining "stalled", Haiku found it in 6 of 6 trials (second run, partial); the code now also hands the model the count of unchanged weeks so it reads a number instead of estimating one. Sonnet is 1.8 times the price and was never wrong on the synthetic stories. For a personal tool run once a week the difference is four cents a month, so cost is not the deciding factor; the deciding factor is that the eval suite exists to measure the gap rather than assume it, and the default should be the model whose weaknesses the checks can catch. Haiku's can. A real deployment would pick per the table, not per taste.
 
 ### A cheaper grader, or a stronger one
 

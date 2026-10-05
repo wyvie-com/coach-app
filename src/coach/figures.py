@@ -119,6 +119,11 @@ class ExerciseHistory(_Frozen):
     e1rm_change_kg: float | None
     e1rm_change_pct: float | None
     rpe_change: float | None
+    #: Consecutive weeks, ending at the last week with data, whose top set (load and reps)
+    #: equals that last top set. Weeks without a session are skipped, not counted. 1 means
+    #: the top set changed this week. The prompt calls four or more a stall; the code counts
+    #: so the model does not have to.
+    top_set_unchanged_weeks: int | None
 
 
 def _working(exercises: Iterable[Exercise]) -> list[Set]:
@@ -340,6 +345,15 @@ def exercise_history(
     with_data = [e for e in entries if e.e1rm_kg is not None]
     first, last = (with_data[0], with_data[-1]) if len(with_data) >= 2 else (None, None)
     rpe_pair = [e.mean_rpe for e in with_data if e.mean_rpe is not None]
+    with_top = [e for e in entries if e.top_set_kg is not None]
+    unchanged: int | None = None
+    if with_top:
+        final = (with_top[-1].top_set_kg, with_top[-1].top_set_reps)
+        unchanged = 0
+        for entry in reversed(with_top):
+            if (entry.top_set_kg, entry.top_set_reps) != final:
+                break
+            unchanged += 1
     return ExerciseHistory(
         exercise=title,
         template_id=template_id,
@@ -347,6 +361,7 @@ def exercise_history(
         e1rm_change_kg=None if first is None else _round(last.e1rm_kg - first.e1rm_kg),
         e1rm_change_pct=None if first is None else _round(_pct(last.e1rm_kg, first.e1rm_kg)),
         rpe_change=None if len(rpe_pair) < 2 else _round(rpe_pair[-1] - rpe_pair[0], 2),
+        top_set_unchanged_weeks=unchanged,
     )
 
 

@@ -161,3 +161,44 @@ def test_ensure_credentials_refuses_without_a_working_route() -> None:
 
     with pytest.raises(RuntimeError, match="401"):
         ensure_credentials(Client())
+
+
+def test_an_api_error_is_recorded_and_the_run_stops_with_a_report(tmp_path: Path) -> None:
+    """A billing or auth error mid-run must not lose the paid trials or leave no report."""
+
+    class FailingReviewer:
+        def __init__(self) -> None:
+            self.messages = self
+            self.calls = 0
+
+        def create(self, **kwargs: Any) -> Message:
+            self.calls += 1
+            if self.calls <= 2:  # one full trial (tool call then answer), then the account runs dry
+                return FixedReviewer(HAIKU).create(**kwargs)
+            response = httpx.Response(
+                400, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            )
+            raise anthropic.BadRequestError(
+                "Your credit balance is too low", response=response, body=None
+            )
+
+    reviewer = FailingReviewer()
+    report = run_eval(
+        cases=CASES[:3],
+        models=[HAIKU],
+        trials=2,
+        review_client=lambda model: reviewer,
+        grader_client=FixedGrader(),
+        grader_model=HAIKU,
+        out_dir=tmp_path,
+    )
+    haiku = report.models[0]
+    assert [t.outcome for t in haiku.trials] == ["ok", "api_error"]
+    assert haiku.summary.outcomes == {"api_error": 1, "ok": 1}
+    assert "credit balance" in haiku.trials[1].check_details["schema_valid"]
+    assert (
+        report.stopped_early
+        == "claude-haiku-4-5-20251001 steady_progress-1 trial 2: BadRequestError"
+    )
+    assert (tmp_path / "report.md").exists() and (tmp_path / "report.json").exists()
+    assert "stopped early" in (tmp_path / "report.md").read_text()

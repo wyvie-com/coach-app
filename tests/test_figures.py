@@ -258,3 +258,32 @@ def test_rep_pr_ignores_loads_older_than_twelve_weeks() -> None:
     this = _workout(W40, 0, [_bench(90.0, reps=8)])
     bench = week_figures([old, this], W40).exercises[0]
     assert bench.matched_load_prior_best_reps is None and bench.rep_pr is False
+
+
+def test_top_set_unchanged_weeks_counts_back_from_the_latest_week() -> None:
+    loads = {4: 75.0, 3: 80.0, 2: 80.0, 1: 80.0, 0: 80.0}  # weeks back -> top load, 5 reps each
+    workouts = [_workout(W40.shift(-back), 0, [_bench(load)]) for back, load in loads.items()]
+    history = exercise_history(workouts, "Bench Press (Barbell)", weeks=6, ending=W40)
+    assert history.top_set_unchanged_weeks == 4
+    moved = workouts + [_workout(W40.shift(1), 0, [_bench(82.5)])]
+    assert (
+        exercise_history(
+            moved, "Bench Press (Barbell)", weeks=6, ending=W40.shift(1)
+        ).top_set_unchanged_weeks
+        == 1
+    )
+    same_load_more_reps = workouts + [_workout(W40.shift(1), 0, [_bench(80.0, reps=6)])]
+    assert (
+        exercise_history(
+            same_load_more_reps, "Bench Press (Barbell)", weeks=6, ending=W40.shift(1)
+        ).top_set_unchanged_weeks
+        == 1
+    )
+
+
+def test_top_set_unchanged_weeks_skips_empty_weeks_and_is_none_without_data() -> None:
+    workouts = [_workout(W40, 0, [_bench(80.0)]), _workout(W40.shift(-2), 0, [_bench(80.0)])]
+    history = exercise_history(workouts, "Bench Press (Barbell)", weeks=4, ending=W40)
+    assert history.top_set_unchanged_weeks == 2
+    none = exercise_history(workouts, "Bench Press (Barbell)", weeks=1, ending=W40.shift(-1))
+    assert none.top_set_unchanged_weeks is None
