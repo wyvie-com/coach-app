@@ -14,7 +14,10 @@ from coach.figures import format_table, week_figures
 from coach.hevy.client import HevyClient, HevyError
 from coach.hevy.pull import format_summary, pull
 from coach.hevy.store import PullStore
-from coach.model import WeekId, from_raw_pages
+from coach.model import WeekId, Workout, from_raw_pages
+from coach.review.client import build_client
+from coach.review.loop import run_review
+from coach.review.output import render_markdown, write_run
 
 #: Pull directories are named by the local date of the pull.
 LOCAL_ZONE = ZoneInfo("Australia/Melbourne")
@@ -46,21 +49,49 @@ def _pull(args: argparse.Namespace) -> int:
     return 0
 
 
-def _figures(args: argparse.Namespace) -> int:
+def _load(args: argparse.Namespace) -> tuple[list[Workout], WeekId, str] | None:
+    """Workouts from the latest pull and the requested week, or None with a message printed."""
     store = PullStore(args.root)
     pulled = store.latest()
     if pulled is None:
         print(f"no pull found under {args.root}; run `coach pull` first", file=sys.stderr)
-        return 1
+        return None
     today = datetime.now(LOCAL_ZONE).date()
     week = WeekId.parse(args.week) if args.week else WeekId.of_date(today).shift(-1)
-    workouts = from_raw_pages(store.read_pages(pulled))
+    return from_raw_pages(store.read_pages(pulled)), week, pulled.isoformat()
+
+
+def _figures(args: argparse.Namespace) -> int:
+    loaded = _load(args)
+    if loaded is None:
+        return 1
+    workouts, week, pulled = loaded
     figures = week_figures(workouts, week)
-    print(f"pull {pulled.isoformat()}  workouts {len(workouts)}")
+    print(f"pull {pulled}  workouts {len(workouts)}")
     print(format_table(figures))
     print()
     print(figures.model_dump_json(indent=2))
     return 0
+
+
+def _review(args: argparse.Namespace) -> int:
+    loaded = _load(args)
+    if loaded is None:
+        return 1
+    workouts, week, pulled = loaded
+    try:
+        client = build_client(settings.anthropic_api_key())
+    except settings.MissingCredentialError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    model = args.model or settings.review_model()
+    figures = week_figures(workouts, week)
+    run = run_review(client, model, figures, workouts)
+    directory = write_run(args.out, figures, run)
+    print(f"pull {pulled}  week {week}  model {model}")
+    print(render_markdown(figures, run))
+    print(f"written to {directory}")
+    return 0 if run.outcome == "ok" else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +120,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Accepted for symmetry with the brief; figures never call a model.",
     )
     figures_cmd.set_defaults(func=_figures)
+    review_cmd = sub.add_parser(
+        "review", help="Have Claude review one ISO week; writes out/<week>/ and prints the review."
+    )
+    review_cmd.add_argument("--week", help="ISO week such as 2026-W40; default is last week")
+    review_cmd.add_argument(
+        "--model", help=f"Model id; default COACH_MODEL or {settings.DEFAULT_MODEL}"
+    )
+    review_cmd.add_argument("--root", type=Path, default=Path("private/hevy"))
+    review_cmd.add_argument("--out", type=Path, default=Path("out"))
+    review_cmd.set_defaults(func=_review)
     return parser
 
 
