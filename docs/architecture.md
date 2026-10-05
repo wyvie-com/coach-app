@@ -63,16 +63,18 @@ Free text would need a parser, and a parser would need a retry when the text did
 
 ### Haiku by default, or a larger model
 
-| | Haiku 4.5 | Sonnet 5.5 |
-| --- | --- | --- |
-| planted story found | 87% | 100% |
-| kg figures grounded (strict check) | 67% | 91% |
-| every other check | 100% | 100% |
-| rubric follows_from_data (1 to 5) | 3.47 ± 1.17 | 3.55 ± 0.74 |
-| review cost | $0.018 | $0.033 |
-| seconds | 30 | 40 |
+| | Haiku 4.5 | Sonnet 5.5 | Opus 5.5 |
+| --- | --- | --- | --- |
+| planted story found (first run, 15 cases) | 87% | 100% | not run |
+| planted story found (third run, 16 cases, after prompt changes) | 94% | not run | not run |
+| kg figures grounded (strict check, first run) | 67% | 91% | not run |
+| every other check | 100% | 100% | passed on one real week |
+| rubric follows_from_data (1 to 5, first run) | 3.47 ± 1.17 | 3.55 ± 0.74 | not graded |
+| review cost, synthetic week | $0.018 | $0.033 | not run |
+| review cost, real week 2026-W40 | $0.026 | not run | $0.108 |
+| seconds, synthetic week | 30 | 40 | not run |
 
-Haiku's only systematic miss was a five-week bench stall it called "steady". With the prompt defining "stalled", Haiku found it in 6 of 6 trials (second run, partial); the code now also hands the model the count of unchanged weeks so it reads a number instead of estimating one. Sonnet is 1.8 times the price and was never wrong on the synthetic stories. For a personal tool run once a week the difference is four cents a month, so cost is not the deciding factor; the deciding factor is that the eval suite exists to measure the gap rather than assume it, and the default should be the model whose weaknesses the checks can catch. Haiku's can. A real deployment would pick per the table, not per taste.
+Haiku's only systematic miss was a five-week bench stall it called "steady". With the prompt defining "stalled" and the tool returning the count of unchanged weeks, Haiku found it in 12 of 12 trials across the second and third runs. One Opus review of a real week passed every check and raised one more concern than Haiku did, at four times the price. Sonnet is 1.8 times the price and was never wrong on the synthetic stories. For a personal tool run once a week the difference is four cents a month, so cost is not the deciding factor; the deciding factor is that the eval suite exists to measure the gap rather than assume it, and the default should be the model whose weaknesses the checks can catch. Haiku's can. A real deployment would pick per the table, not per taste.
 
 ### A cheaper grader, or a stronger one
 

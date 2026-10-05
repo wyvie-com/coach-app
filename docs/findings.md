@@ -2,7 +2,7 @@
 
 One entry per real failure: when, which model, what the review got wrong, what was added (a check, a case or a prompt rule), and the pass rate before and after. Aggregates only; no set data and no review text from a real week. Dollar figures are what the runs cost on the day. The default review model throughout is `claude-haiku-4-5-20251001`; the grader is the same model with extended thinking.
 
-Credit note: the Anthropic account's prepaid credit ran out on 2026-10-05 during the second full eval run (20 of 45 trials completed) and the hold re-run (5 of 9). Entries below say which numbers are partial. Total recorded spend on the project to that point: $5.00.
+Credit note: the Anthropic account's prepaid credit ran out on 2026-10-05 during the second full eval run (20 of 45 trials completed) and the hold re-run (5 of 9), at $5.00 of spend. After a $5 top-up the same day, a third full run (48 trials, $1.84), an Opus review of one real week ($0.11), a missed-sessions re-run ($0.17) and a Sonnet-graded run completed the measurements. The eval command now prints an estimate and takes a `--budget-usd` cap.
 
 ## 1. Grounding check too strict (eval, 2026-10-05)
 
@@ -16,33 +16,45 @@ Credit note: the Anthropic account's prepaid credit ran out on 2026-10-05 during
 - **Model:** Haiku 4.5.
 - **What went wrong:** `story_found` failed 6 of 45 trials, all the same story: the bench top set unchanged for five weeks, which Haiku described as steady. Sonnet filed it as a concern in 45 of 45.
 - **What changed:** the prompt defines progressing, stalled (top set unchanged for four or more consecutive weeks) and regressing.
-- **Before and after:** bench stall cases, Haiku: before 3 of 6 trials; after 6 of 6 (second run, partial). Across the 20 trials that ran, `story_found` went from 87% (first run, all cases) to 100%; the cases not reached (missed sessions, deadlift regression, combined, the negatives) were at 100% before, so the comparison is on the cases that moved.
+- **Before and after:** bench stall cases, Haiku: before 3 of 6 trials; after 6 of 6 in the second run (partial) and 6 of 6 again in the third full run with the unchanged-weeks count in the tool result. `story_found` over the whole suite: 87% (first run) to 94% (third run, 16 cases, 48 trials); the three remaining misses were a different story, entry 6.
 
 ## 3. Grader hit its token ceiling (eval, 2026-10-05)
 
 - **Model:** grader, Haiku 4.5 with `budget_tokens` 1,024.
 - **What went wrong:** 7 of 90 grades ended in `max_tokens` at a 4,096 ceiling. The thinking budget is a target, not a cap (extended thinking page), and the overrun was large.
 - **What changed:** `max_tokens` 8,192 for the grader.
-- **Before and after:** 7 of 90 grades lost; then 0 of 20 (second run) and 0 of 8 (hold runs).
+- **Before and after:** 7 of 90 grades lost; then 0 of 20 (second run), 0 of 8 (hold runs), 0 of 48 (third run).
 
 ## 4. A two-week hold called a stall (real week 2026-W38)
 
 - **Model:** Haiku 4.5.
 - **What went wrong:** a lift whose top set was unchanged for two consecutive weeks was placed in concerns as "stalled", with the four-week definition already in the prompt. The data checks passed: every figure was real and the tool had been called. Only a reader could tell the finding was wrong.
 - **What changed:** a negative case, `negative_two_week_hold`, in which every lift's review-week top set repeats the previous week's after a rise. Then a prompt sentence saying a two or three week hold is normal programming. That sentence was withdrawn the same day: with it, the planted bench stall was found in 3 of 5 trials, down from 6 of 6 without it. Replaced by a code-computed figure, `top_set_unchanged_weeks` in the tool result, and a prompt rule that four or more is a stall and one to three is not, so the model reads a count instead of making one.
-- **Before and after:** `negative_two_week_hold`, Haiku, with the definition only: 0 of 3 (every trial raised concerns on every lift). With the count in the tool result: not yet measured; credit ran out. The real-week rate before was 1 of 4 weeks wrong.
+- **Before and after:** `negative_two_week_hold`, Haiku, with the definition only: 0 of 3 (every trial raised concerns on every lift). With `top_set_unchanged_weeks` in the tool result and the prompt reading the count: 2 of 3 (third run); the one failure again raised concerns on every lift, so the count helps but does not settle it. The real-week rate before was 1 of 4 weeks wrong. This is the suite's open failure.
 
 ## 5. A sessions concern below the stated threshold (real week 2026-W39)
 
 - **Model:** Haiku 4.5.
 - **What went wrong:** an "Overall" concern reported 0.75 of a missed session, although prompt rule 9 says to report sessions missed only at 1.0 or more. Again every figure was real.
 - **What changed:** a data check, `sessions_threshold`, that fails an Overall concern mentioning sessions when `sessions_missed` is under 1.0. It runs on every real review and in the eval suite.
-- **Before and after:** real weeks: 1 of 4 failed (W39) under the new check. Eval, second run: 20 of 20 passed. The prompt rule is unchanged; the check now enforces it.
+- **Before and after:** real weeks: 1 of 4 failed (W39) under the new check. Eval: 20 of 20 (second run) and 48 of 48 (third run) passed. The prompt rule is unchanged; the check now enforces it.
+
+## 6. Missed sessions noticed but filed outside concerns (eval, 2026-10-05)
+
+- **Model:** Haiku 4.5.
+- **What went wrong:** in the third full run, 3 of 6 missed-sessions trials failed `story_found`. Every one of those reviews stated that two sessions were missed, in the headline, a highlight or a suggestion, but not in concerns. Prompt rule 9 said to report it "under Overall" without naming the section.
+- **What changed:** rule 9 now says a missed-sessions figure of 1.0 or more is a concern and belongs in concerns under "Overall".
+- **Before and after:** missed-sessions cases, Haiku: 3 of 6, then 6 of 6 on a re-run of the two cases ($0.17).
+
+## 7. One Opus review of a real week (2026-10-05)
+
+- **Model:** Opus 5.5, week 2026-W40, the same week Haiku reviewed.
+- **Result:** every data check passed; 5 turns, 4 tool calls, 24 seconds, $0.108 against Haiku's $0.026 for the same week. Opus raised three concerns where Haiku raised two, the third being a dumbbell press Haiku had passed over. Not a failure; recorded so the architecture note's model table has a measured Opus row.
 
 ## Trial variation
 
-First full run, Haiku, three trials per case: `story_found` passed in every trial for 12 of 15 cases and in some trials for the other 3 (the bench stall cases); `kg_grounded` (strict) was stable in only 6 of 15 cases, which is what pointed at the check rather than the model. The grader's `follows_from_data` had the widest spread of the four dimensions (standard deviation 1.17 on Haiku's reviews, 0.74 on Sonnet's) and scored three quiet-week reviews at 2, so the grader and the code checks disagree about what a quiet week deserves; its reasons are now stored per trial for the next run to read.
+First full run, Haiku, three trials per case: `story_found` passed in every trial for 12 of 15 cases and in some trials for the other 3 (the bench stall cases); `kg_grounded` (strict) was stable in only 6 of 15 cases, which is what pointed at the check rather than the model. Third run, 16 cases: `story_found` stable in 14 of 16, `no_false_alarm` in 15 of 16, `kg_grounded` (refined) in 15 of 16, everything else in 16 of 16; one grounding failure quoted a volume-like figure that is in neither the data nor a tool result. The grader's `follows_from_data` had the widest spread of the four dimensions (standard deviation 1.17 on Haiku's reviews, 0.74 on Sonnet's) and scored three quiet-week reviews at 2, so the grader and the code checks disagree about what a quiet week deserves; its reasons are now stored per trial for the next run to read.
 
 ## Not yet done
 
-A full run with the unchanged-weeks count in the tool (entries 2 and 4), a run of `negative_two_week_hold` after it, and a Sonnet-graded comparison. Each needs credit on the account first; the full Haiku run is about $1.90 at the second run's $0.0425 per trial.
+A full run with the rule-9 wording of entry 6 (the third run predates it), and another look at the two-week hold, where 1 trial in 3 still fails. Total project spend at the end of 2026-10-05: see the slice 5 note.

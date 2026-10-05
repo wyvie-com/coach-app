@@ -23,9 +23,14 @@ Date: 2026-10-05. Branch `claude/funny-cori-evrx1v`. Tag `v0.1.0`.
 | hold case, definition only | 3 | $0.11 |
 | second full run, Haiku (stopped at 20 of 45) | 20 | $0.85 |
 | hold and stall re-run (stopped at 5 of 9) | 5 | $0.21 |
-| **total** | | **$5.00** |
+| *credit exhausted; $5 top-up* | | |
+| third full run, Haiku, 16 cases (unchanged-weeks count) | 48 | $1.84 |
+| Opus 5.5 review of real week 2026-W40 | 1 | $0.11 |
+| missed-sessions re-run after the rule-9 wording | 6 | $0.17 |
+| Sonnet-graded run, 16 cases, 2 trials | 32 | see findings |
+| **total** | | **about $8.40** |
 
-The slice estimate was $2; the second full run and the two hold runs were the overrun, taken to turn two real failures into measured ones. The account's prepaid credit ran out during the last two, so entries 2 and 4 in the findings log carry partial numbers and say so.
+The slice estimate was $2; the second full run and the two hold runs were the overrun, taken to turn two real failures into measured ones. The account's prepaid credit ran out during the last two. After the top-up, the remaining measurements were run under the new `--budget-usd` cap.
 
 ## Decisions and rejected alternatives
 
@@ -47,7 +52,7 @@ uv run coach rescore out/eval/<timestamp>/trials.jsonl --strict-grounding
 
 ## What it does not do yet
 
-The measurements that need credit: a full run with the unchanged-weeks count, the hold case after it, a Sonnet-graded comparison, and the single Opus run the architecture note planned. Slice 6 (Message Batches) is unstarted.
+A full run with the rule-9 wording (the third run predates it). The two-week hold still fails 1 trial in 3. Slice 6 (Message Batches) is unstarted.
 
 ## Three questions an interviewer might ask
 
