@@ -78,7 +78,7 @@ Haiku's only systematic miss was a five-week bench stall it called "steady". Wit
 
 ### A cheaper grader, or a stronger one
 
-The grader is Haiku by default because the brief fixed that, with `--grader-model` for a different one. The evaluation guide prefers a grader that is not the generator. The grader's `follows_from_data` dimension has the widest spread of the four (std 1.17 on Haiku's reviews) and disagreed with the code checks on the quiet negative case three times out of three. A Sonnet-graded run is a one-flag experiment and belongs in the findings log when there is a question only it can answer.
+The grader is Haiku by default because the brief fixed that, with `--grader-model` for a different one. The evaluation guide prefers a grader that is not the generator. Measured (findings entry 8): the Sonnet grader costs about the same per review as Haiku with thinking ($0.016 against $0.014) and is far stricter. Its strictness found a flaw in the grader's own input, which Haiku's leniency had hidden: the grader was never shown the tool results the review had used, so eight-week gains quoted from them read as fabrication. With the histories passed in, Sonnet's `follows_from_data` mean rose from 1.66 to 3.00 and its remaining criticisms are specific and correct. The recommendation is Sonnet as the grader when the purpose is to learn why a review scored as it did, and either when the purpose is a pass rate. The default stays Haiku as the brief set it.
 
 ### Caching boundaries
 

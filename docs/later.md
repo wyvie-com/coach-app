@@ -13,4 +13,4 @@ Things named during the build that are larger than this side project needs now. 
 - Volume by muscle group, which needs `GET /v1/exercise_templates` for the `primary_muscle_group` field.
 - A `coach eval --rescore <trials.jsonl>` command that re-runs the code checks over stored reviews without paying for new ones; the trial record now carries the review for this reason.
 - A spend estimate before a paid eval run, with a confirmation prompt above a threshold, so an exhausted credit balance is caught before the run rather than during it.
-- The measurements waiting on credit: a full run with `top_set_unchanged_weeks`, the two-week-hold case after it, a Sonnet-graded comparison, one Opus 5.5 run for the architecture note.
+- Offline re-grading: grade stored reviews from a `trials.jsonl` with a different grader model without regenerating the reviews, so grader comparisons are on identical reviews.

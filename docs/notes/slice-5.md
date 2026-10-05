@@ -27,8 +27,9 @@ Date: 2026-10-05. Branch `claude/funny-cori-evrx1v`. Tag `v0.1.0`.
 | third full run, Haiku, 16 cases (unchanged-weeks count) | 48 | $1.84 |
 | Opus 5.5 review of real week 2026-W40 | 1 | $0.11 |
 | missed-sessions re-run after the rule-9 wording | 6 | $0.17 |
-| Sonnet-graded run, 16 cases, 2 trials | 32 | see findings |
-| **total** | | **about $8.40** |
+| Sonnet-graded run, 16 cases, 2 trials | 32 | $1.07 |
+| Sonnet-graded run with tool results shown to the grader, 1 trial | 16 | $0.74 |
+| **total** | | **$8.93** |
 
 The slice estimate was $2; the second full run and the two hold runs were the overrun, taken to turn two real failures into measured ones. The account's prepaid credit ran out during the last two. After the top-up, the remaining measurements were run under the new `--budget-usd` cap.
 
@@ -52,7 +53,7 @@ uv run coach rescore out/eval/<timestamp>/trials.jsonl --strict-grounding
 
 ## What it does not do yet
 
-A full run with the rule-9 wording (the third run predates it). The two-week hold still fails 1 trial in 3. Slice 6 (Message Batches) is unstarted.
+A full run with the rule-9 wording (the third run predates it). The two-week hold still fails 1 trial in 3. The two review weaknesses the Sonnet grader now names (findings entry 8). Slice 6 (Message Batches) is unstarted.
 
 ## Three questions an interviewer might ask
 

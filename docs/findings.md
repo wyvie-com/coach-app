@@ -51,10 +51,18 @@ Credit note: the Anthropic account's prepaid credit ran out on 2026-10-05 during
 - **Model:** Opus 5.5, week 2026-W40, the same week Haiku reviewed.
 - **Result:** every data check passed; 5 turns, 4 tool calls, 24 seconds, $0.108 against Haiku's $0.026 for the same week. Opus raised three concerns where Haiku raised two, the third being a dumbbell press Haiku had passed over. Not a failure; recorded so the architecture note's model table has a measured Opus row.
 
+## 8. The grader judged without the tool results (eval, 2026-10-05)
+
+- **Model:** grader. Haiku 4.5 by default; Sonnet 5.5 for the comparison the architecture note asked for.
+- **What went wrong:** the Sonnet grader scored Haiku's reviews at a mean `follows_from_data` of 1.66 out of 5 (32 trials) against the Haiku grader's 2.75 on the same cases. Its reasons said the reviews quoted "fabricated" eight-week gains. Those gains were in the exercise_history results the review had looked up, which the grader was never shown: it saw the week's figures and the review only. The lenient grader had hidden a flaw in the grading input; the stricter one exposed it.
+- **What changed:** the harness recomputes each successful tool call's history and passes it to the grader with the figures and the review, which is also what the `kg_grounded` check uses.
+- **Before and after:** Sonnet grader, `follows_from_data`, same prompt and cases: 1.66 (32 trials) to 3.00 (16 trials, one per case). Per story the rise was everywhere: bench stall 2.0 to 4.0, missed sessions 2.0 to 4.5, deload 2.5 to 4.0, steady progress 1.0 to 2.5. What remains at 2 to 3 is now real: a review that called one lift's growth the fastest when its own figures showed another grew faster; "lower volume" claimed for a deload week without a prior-week volume to compare. Those are the next prompt and figure changes, and the grader is now trustworthy enough to measure them.
+- **Cheaper or stronger grader:** on these reviews Sonnet grades at about $0.016 per review against Haiku's $0.014 with thinking, so cost is not the difference. Sonnet's reasons were specific enough to debug the grader itself; Haiku's were not. The default stays Haiku because the brief set it, but the architecture note recommends Sonnet for the grader when the goal is to find out why.
+
 ## Trial variation
 
 First full run, Haiku, three trials per case: `story_found` passed in every trial for 12 of 15 cases and in some trials for the other 3 (the bench stall cases); `kg_grounded` (strict) was stable in only 6 of 15 cases, which is what pointed at the check rather than the model. Third run, 16 cases: `story_found` stable in 14 of 16, `no_false_alarm` in 15 of 16, `kg_grounded` (refined) in 15 of 16, everything else in 16 of 16; one grounding failure quoted a volume-like figure that is in neither the data nor a tool result. The grader's `follows_from_data` had the widest spread of the four dimensions (standard deviation 1.17 on Haiku's reviews, 0.74 on Sonnet's) and scored three quiet-week reviews at 2, so the grader and the code checks disagree about what a quiet week deserves; its reasons are now stored per trial for the next run to read.
 
 ## Not yet done
 
-A full run with the rule-9 wording of entry 6 (the third run predates it), and another look at the two-week hold, where 1 trial in 3 still fails. Total project spend at the end of 2026-10-05: see the slice 5 note.
+A full run with the rule-9 wording of entry 6 (the third run predates it); another look at the two-week hold, where 1 trial in 3 still fails; and the two review weaknesses the Sonnet grader now surfaces (entry 8). Total project spend at the end of 2026-10-05: $8.93, see the slice 5 note.
