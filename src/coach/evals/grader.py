@@ -1,7 +1,10 @@
 """The rubric grader: a separate model call that sees the figures and the review only.
 
 It never sees the case name, the planted story or the expected finding, so it judges
-the review as a reader would. Four dimensions, 1 to 5 each, with a one-sentence reason,
+the review as a reader would. It does see the figures and every history the review's
+tool calls returned: the first Sonnet-graded run (docs/findings.md, entry 8) scored
+reviews as "fabricated" for quoting eight-week gains that were in a tool result the
+grader had not been shown. Four dimensions, 1 to 5 each, with a one-sentence reason,
 returned through structured outputs and validated again here.
 
 Thinking: Haiku 4.5 supports manual extended thinking only (``thinking.type
@@ -17,13 +20,14 @@ are included in the grader's cost.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any, Literal
 
 import anthropic
 from anthropic.types import Message, TextBlock
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from coach.figures import WeekFigures
+from coach.figures import ExerciseHistory, WeekFigures
 from coach.pricing import Cost, normalise_model
 from coach.pricing import cost as price
 from coach.review.client import ClaudeClient
@@ -74,9 +78,10 @@ GRADER_JSON_SCHEMA: dict[str, Any] = {
 
 GRADER_SYSTEM = (
     "You grade a weekly training review written by a coach from a set of computed figures. "
-    "You are given the figures (JSON) and the review (JSON). Score the review on four "
-    "dimensions from 1 to 5 and give one sentence of reason for each. Judge only what is in "
-    "front of you; do not assume anything about the athlete.\n\n"
+    "You are given the figures (JSON), the exercise histories the coach looked up (JSON, one "
+    "per lookup; a figure in a history counts as data), and the review (JSON). Score the review "
+    "on four dimensions from 1 to 5 and give one sentence of reason for each. Judge only what "
+    "is in front of you; do not assume anything about the athlete.\n\n"
     + "\n".join(f"{dim}: {text}" for dim, text in RUBRIC_TEXT.items())
 )
 
@@ -123,9 +128,16 @@ def grader_thinking(model: str) -> dict[str, Any] | None:
     return None
 
 
-def _request(model: str, figures: WeekFigures, review: Review) -> dict[str, Any]:
+def _request(
+    model: str,
+    figures: WeekFigures,
+    review: Review,
+    histories: Sequence[ExerciseHistory],
+) -> dict[str, Any]:
+    looked_up = "\n".join(h.model_dump_json() for h in histories) or "(none)"
     user = (
         f"Figures for ISO week {figures.week}:\n{figures.model_dump_json()}\n\n"
+        f"Exercise histories the coach looked up:\n{looked_up}\n\n"
         f"Review:\n{review.model_dump_json()}\n\n"
         "Score the review."
     )
@@ -142,9 +154,15 @@ def _text(message: Message) -> str:
     return "".join(b.text for b in message.content if isinstance(b, TextBlock))
 
 
-def grade(client: ClaudeClient, model: str, figures: WeekFigures, review: Review) -> GradeResult:
+def grade(
+    client: ClaudeClient,
+    model: str,
+    figures: WeekFigures,
+    review: Review,
+    histories: Sequence[ExerciseHistory] = (),
+) -> GradeResult:
     """Grade one review. One request, or two if the thinking configuration is rejected."""
-    request = _request(model, figures, review)
+    request = _request(model, figures, review, histories)
     thinking = grader_thinking(model)
     mode: Literal["enabled", "off", "off_after_400"] = "enabled" if thinking else "off"
     costs: list[Cost] = []

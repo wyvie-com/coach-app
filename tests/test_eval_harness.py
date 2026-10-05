@@ -71,9 +71,12 @@ class FixedGrader:
     def __init__(self) -> None:
         self.messages = self
         self.calls = 0
+        self.saw_history = False
 
     def create(self, **kwargs: Any) -> Message:
         self.calls += 1
+        if "top_set_unchanged_weeks" in json.dumps(kwargs["messages"]):
+            self.saw_history = True
         scores = {
             d: {"score": s, "reason": "r"}
             for d, s in zip(
@@ -112,6 +115,7 @@ def test_harness_end_to_end_offline(tmp_path: Path) -> None:
     assert checks["no_false_alarm"].passed == 1 * 2
     assert haiku.summary.rubric["safe"].mean == 5.0 and haiku.summary.rubric["specific"].std == 0.0
     assert haiku.summary.tool_calls_mean == 1.0
+    assert grader.saw_history  # the bench history behind the review's tool call reached the grader
     assert haiku.summary.outcomes == {"ok": 32}
     # The fixed review's "One session this week" concern fails sessions_threshold except where
     # sessions were planted missed: missed_sessions x2 and combined.

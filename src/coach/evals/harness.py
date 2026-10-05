@@ -22,7 +22,8 @@ from coach import credentials
 from coach.evals.cases import Case, build_case
 from coach.evals.checks import CHECK_NAMES, run_checks
 from coach.evals.grader import RUBRIC, grade
-from coach.figures import week_figures
+from coach.figures import ExerciseHistory, UnknownExerciseError, exercise_history, week_figures
+from coach.model import WeekId, Workout
 from coach.pricing import normalise_model
 from coach.review.client import ClaudeClient
 from coach.review.loop import run_review
@@ -130,6 +131,20 @@ def ensure_credentials(client: ClaudeClient) -> None:
         )
 
 
+def _histories(run_tool_calls, workouts: Sequence[Workout], week: str) -> list[ExerciseHistory]:
+    """Recompute what each successful tool call returned, so the grader sees what the model saw."""
+    ending = WeekId.parse(week)
+    out: list[ExerciseHistory] = []
+    for call in run_tool_calls:
+        if call.is_error or call.weeks is None:
+            continue
+        try:
+            out.append(exercise_history(workouts, call.exercise, weeks=call.weeks, ending=ending))
+        except (UnknownExerciseError, ValueError):
+            continue
+    return out
+
+
 def _order(models: Sequence[str]) -> list[str]:
     haiku = [m for m in models if normalise_model(m).startswith("claude-haiku")]
     rest = [m for m in models if m not in haiku]
@@ -219,7 +234,13 @@ def run_eval(
                     run = run_review(client, model, figures, data.workouts)
                     results = run_checks(data.case, figures, run, data.workouts)
                     graded = (
-                        grade(grader_client, grader_model, figures, run.review)
+                        grade(
+                            grader_client,
+                            grader_model,
+                            figures,
+                            run.review,
+                            _histories(run.tool_calls, data.workouts, figures.week),
+                        )
                         if run.review
                         else None
                     )

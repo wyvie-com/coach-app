@@ -88,6 +88,7 @@ def test_grader_sees_figures_and_review_but_not_the_case() -> None:
     call = client.messages.calls[0]
     user_text = json.dumps(call["messages"])
     assert "Bench stalled." in user_text and figures.week in user_text
+    assert "Exercise histories the coach looked up" in user_text and "(none)" in user_text
     for forbidden in ("bench_stall", "expected", "planted", "story"):
         assert forbidden not in user_text.lower(), forbidden
     assert call["output_config"]["format"]["schema"] == GRADER_JSON_SCHEMA
@@ -133,3 +134,17 @@ def test_grader_thinking_tokens_are_part_of_the_cost() -> None:
     msg = _message(json.dumps(_scores()), output_tokens=1200)
     result = grade(FakeClient([msg]), HAIKU, figures, review)
     assert result.cost.output_usd > 0.005
+
+
+def test_grader_sees_the_tool_results_the_review_used() -> None:
+    from coach.figures import exercise_history
+
+    data, figures, review = _inputs()
+    history = exercise_history(
+        data.workouts, "Bench Press (Barbell)", weeks=5, ending=data.review_week
+    )
+    client = FakeClient([_message(json.dumps(_scores()))])
+    grade(client, HAIKU, figures, review, histories=[history])
+    user_text = json.dumps(client.messages.calls[0]["messages"])
+    assert "top_set_unchanged_weeks" in user_text
+    assert str(history.weeks[0].week) in user_text
