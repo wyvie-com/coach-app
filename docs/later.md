@@ -11,3 +11,4 @@ Things named during the build that are larger than this side project needs now. 
 - A gitleaks configuration file with project-specific allow rules, if the default rules ever produce a false positive.
 - Weekly hard sets per muscle group as a volume measure, which needs `GET /v1/exercise_templates` for `primary_muscle_group` (the research brought to the slice 2 gate names it the second metric for a high-rep log).
 - Volume by muscle group, which needs `GET /v1/exercise_templates` for the `primary_muscle_group` field.
+- A `coach eval --rescore <trials.jsonl>` command that re-runs the code checks over stored reviews without paying for new ones; the trial record now carries the review for this reason.

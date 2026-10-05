@@ -119,6 +119,9 @@ def test_harness_end_to_end_offline(tmp_path: Path) -> None:
     assert names == ["report.json", "report.md", "trials.jsonl"]
     lines = (tmp_path / "trials.jsonl").read_text().splitlines()
     assert len(lines) == 60 and json.loads(lines[0])["case"] == "steady_progress-1"
+    first = json.loads(lines[0])
+    assert first["review"]["headline"] == FIXED_REVIEW["headline"]  # re-scorable offline
+    assert first["grade_reasons"]["safe"] == "r" and first["tool_call_log"][0]["exercise"] == BENCH
     markdown = (tmp_path / "report.md").read_text()
     assert markdown.index("| check") < markdown.index("## Cases")  # summary table first
     assert markdown.index(HAIKU) < markdown.index(SONNET)

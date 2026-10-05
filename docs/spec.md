@@ -134,7 +134,7 @@ coach eval --model claude-haiku-4-5-20251001 --trials 3
 | Cached prefix may be under Haiku's 4,096-token minimum. | Measured: it is. Resolved by a second breakpoint on the figures block (section 4.6); do not pad. |
 | Three-suggestion cap not expressible in the API schema. | Prompt, Pydantic `max_length=3`, and a check. |
 | Epley overstates above ten reps, and most of my sets are 12 to 20 reps (slice 2 dry run). | No e1RM above ten reps; rep PR at matched load and volume are the strength measures for high-rep exercises; the prompt says so. **Secondary** (research supplied by the product owner on 2026-10-05): Hevy uses a percentage table equal to Epley up to 30 reps then a flat 50 percent and never stops estimating; Strong and RepCount estimate at every rep count with a warning; Reynolds, Gordon and Robergs (2006, JSCR) conclude "no more than 10 repetitions should be used in linear equations to estimate 1RM". Decided at the slice 2 gate. |
-| Thinking with structured outputs undocumented. | Grader tries thinking on at the minimum budget, falls back to off on rejection, records the path. Review model: no thinking. |
+| Thinking with structured outputs undocumented. | Resolved at the slice 4 gate: Haiku 4.5 accepted `thinking: {"type": "enabled", "budget_tokens": 1024}` together with `output_config.format` on all 90 grader calls; the fallback path stayed in the code and was never taken. The budget is a target, not a cap: with `max_tokens` 4,096 the grader hit the ceiling 7 times, so it is 8,192. Review model: no thinking. |
 | Grader equals generator. | Keep the brief's default; one Sonnet-graded run reports agreement. |
 | Exercise title drift. | Group by `exercise_template_id`, display the latest title. |
 | Time zone. | Constant `Australia/Melbourne`, tested at the UTC boundary; configurable later. |
@@ -143,6 +143,8 @@ coach eval --model claude-haiku-4-5-20251001 --trials 3
 | Trial variance hides regressions. | Report "passed in every trial" beside pass rate; three trials minimum. |
 
 Decided 2026-10-05 (product owner): the eval report compares Haiku 4.5 against `claude-sonnet-5-5` as the main comparator, with a single `claude-opus-5-5` run for the architecture note.
+
+First full run (2026-10-05, 15 cases, 3 trials, Haiku grader, $3.65): Haiku 4.5 found the story in 87 percent of trials and grounded every kilogram figure in 67 percent; Sonnet 5.5 scored 100 and 91 percent at $0.033 per review against $0.018. Details in `docs/notes/slice-4.md`.
 
 ## 9. Out of scope
 

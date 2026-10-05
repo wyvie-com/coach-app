@@ -37,6 +37,63 @@ Known blind spots: the checks read exact exercise names and kilogram numbers, so
 
 No real data is copied: the case is a planted pattern, not the week that failed.
 
-## Live run
+## Live run (2026-10-05, 15 cases, 3 trials, grader Haiku 4.5 with thinking)
 
-(filled in below once the run completes)
+Smoke run first: two cases, one trial, $0.07. It found the two fixes above. Then the full run: 90 reviews and 90 grades, 53 minutes, $3.65 in total.
+
+| | Haiku 4.5 | Sonnet 5.5 |
+| --- | --- | --- |
+| schema_valid | 100% (45/45) | 100% (45/45) |
+| story_found | 87% (39/45), stable 12/15 cases | 100% (45/45), stable 15/15 |
+| no_false_alarm | 100% | 100% |
+| exercises_exist | 100% | 100% |
+| kg_grounded | 67% (30/45), stable 6/15 | 91% (41/45), stable 11/15 |
+| concern_preceded_by_tool | 100% | 100% |
+| max_three_suggestions | 100% | 100% |
+| follows_from_data (1 to 5) | 3.47 ± 1.17 (n 43) | 3.55 ± 0.74 (n 40) |
+| specific | 4.49 ± 0.54 | 4.75 ± 0.43 |
+| safe | 4.84 ± 0.37 | 4.95 ± 0.22 |
+| concise | 4.23 ± 0.77 | 4.15 ± 0.53 |
+| tool calls per review | 2.98 | 3.84 |
+| seconds per review | 30.0 | 40.0 |
+| review cost per review | $0.0181 | $0.0327 |
+| total (reviews plus grading) | $1.44 | $2.21 |
+
+Every review on both models reached `ok`: no refusal, no truncation, no invalid JSON, no schema failure, no tool error, no false alarm, no invented exercise, no concern without a tool call. The differences are in two checks and in cost.
+
+**What Haiku missed.** All six `story_found` failures are the same story: the bench press held at one load for five weeks at a steady RPE, and Haiku did not put it in concerns (both `bench_stall` seeds and all three `combined` trials; in one `combined` trial it also missed the missed sessions). It had called the tool for bench and seen five identical top sets; it described them as steady rather than stalled. Sonnet filed the stall as a concern every time. This is the one place in the suite where the larger model is clearly better, and it is a judgement call about what "stalled" means that the prompt can make explicit.
+
+**What `kg_grounded` is really catching.** Of the 15 Haiku failures and 4 Sonnet failures, almost every ungrounded number is 2.5, 5.0 or 7.5: the model stating a week-to-week load step it computed from two grounded figures ("up 2.5 kg a fortnight"). The one other value (8.8) was a correct e1RM difference. None was invented. The check is stricter than the spec's intent, which was to catch numbers that come from nowhere. The planned refinement, recorded for `docs/findings.md` in slice 5 with a before-and-after pass rate, is to accept the difference between two grounded figures for the same exercise. The trial record now stores the review so that re-scoring is an offline operation.
+
+**Grader.** Haiku 4.5 accepted thinking together with structured output on all 90 calls; the 400 fallback never fired. Seven grades (2 Haiku-reviewed, 5 Sonnet-reviewed) ended in `max_tokens` because thinking overran the 1,024 target well past a 4,096 ceiling, so the grader's `max_tokens` is now 8,192 and those seven are missing from the rubric means above (n 43 and n 40). The grader's `follows_from_data` is the dimension with the widest spread and the one most often at 2; three of Haiku's `negative_quiet` reviews scored 2 there, which says the grader and the review disagree about what a quiet week deserves. The grader's reasons are now stored per trial so the next run can say why.
+
+**Cost.** A Haiku review costs $0.018 and a Sonnet review $0.033, so Sonnet is 1.8 times the price for a 13-point gain on story detection and a 24-point gain on grounding, with the grounding gap mostly the arithmetic described above. Grading at Haiku costs about $0.015 per review on top. The brief's trade-off question now has numbers; the architecture note in slice 5 makes the call.
+
+## Decisions and rejected alternatives
+
+- **Trials appended to JSONL as they finish.** A rate limit or a crash at trial 80 of 90 keeps 80 paid results. Rejected: building the report in memory only.
+- **Grader never sees the case.** The user turn contains the figures and the review and nothing else; the test asserts the case name, the word "expected" and the word "planted" are absent. Rejected: telling the grader what to look for, which would make it a second code check.
+- **Same model as grader by default, with the model named in every report.** The brief fixes the default; the eval guide prefers a different model. The report carries `grader_model` so a Sonnet-graded run is a one-flag comparison.
+- **Checks fail closed when there is no review.** A refused or truncated run counts as failing every check rather than being excluded, so a model that refuses often cannot look good.
+- **Strict grounding kept for this run.** Refining the check before measuring would have hidden the finding. The refinement is the first entry for the findings log.
+- **Haiku first in the report** by rule, whatever order `--model` was given in.
+
+## How to run it
+
+```
+uv run pytest
+uv run coach eval --cases bench_stall-1,negative_quiet-1 --trials 1        # smoke, about $0.07
+uv run coach eval --trials 3                                              # Haiku, about $1.50
+uv run coach eval --model claude-haiku-4-5-20251001 --model claude-sonnet-5-5 --trials 3
+uv run coach eval --grader-model claude-sonnet-5-5 --trials 3
+```
+
+## What it does not do yet
+
+No offline re-scoring command (the data for it is now stored). No RPE-free variant of the cases, although the real log has no RPE. No batch path. No Opus run yet. The prompt has not been changed in response to these numbers; that is deliberate, so slice 5 can show a before and after.
+
+## Three questions an interviewer might ask
+
+1. Haiku missed the bench stall six times and Sonnet never did. Is that a prompt problem or a model problem? Both are plausible and the suite can tell them apart: change the prompt to define "stalled" (same top set for four or more weeks at steady RPE), re-run both models, and see whether Haiku's story_found moves. If it does, it was the prompt. If Sonnet stays at 100 and Haiku stays at 87, the capability gap is real and the cost table says whether it is worth 1.8 times the price.
+2. Two thirds of Haiku's grounding failures are "2.5 kg". Is the check wrong? The check implements the spec literally, and the spec was written to catch invented numbers. A difference between two numbers in the data is derived, not invented. The honest sequence is: run the strict check, measure, record the finding, refine the check with a stated rule, re-score the stored reviews, and report both pass rates. Loosening the check first would have hidden what the model actually does.
+3. Why store the review in every trial record when the report only needs the scores? Because checks change. Re-scoring 90 stored reviews is free; regenerating them costs $2.30 and gives different reviews, so the before-and-after would not be comparable.

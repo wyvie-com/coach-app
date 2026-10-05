@@ -92,7 +92,7 @@ def test_grader_sees_figures_and_review_but_not_the_case() -> None:
         assert forbidden not in user_text.lower(), forbidden
     assert call["output_config"]["format"]["schema"] == GRADER_JSON_SCHEMA
     assert call["thinking"] == {"type": "enabled", "budget_tokens": 1024}
-    assert call["max_tokens"] == 4096
+    assert call["max_tokens"] == 8192
     assert result.thinking == "enabled"
     assert result.cost.total_usd > 0
 

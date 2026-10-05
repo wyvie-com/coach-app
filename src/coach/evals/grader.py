@@ -50,8 +50,9 @@ RUBRIC_TEXT = {
     ),
 }
 
-#: The thinking budget is a target, not a cap (extended thinking page), so leave room above it.
-GRADER_MAX_TOKENS = 4096
+#: The thinking budget is a target, not a cap (extended thinking page). At 4,096 the grader hit
+#: max_tokens in 7 of 90 trials on the first full run, so the ceiling is twice that.
+GRADER_MAX_TOKENS = 8192
 GRADER_THINKING_BUDGET = 1024
 
 _SCORE = {

@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -74,7 +75,11 @@ class TrialRecord(BaseModel):
     check_details: dict[str, str]
     grade_outcome: str | None
     scores: dict[str, int] | None
+    grade_reasons: dict[str, str] | None
     grader_thinking: str | None
+    #: The review itself, so a changed check can re-score a past run without paying again.
+    review: dict[str, Any] | None
+    tool_call_log: list[dict[str, Any]]
     tool_calls: int
     tool_errors: int
     turns: int
@@ -201,7 +206,10 @@ def run_eval(
                     check_details={r.name: r.detail for r in results if not r.passed},
                     grade_outcome=None if graded is None else graded.outcome,
                     scores=None if graded is None else graded.scores,
+                    grade_reasons=None if graded is None else graded.reasons,
                     grader_thinking=None if graded is None else graded.thinking,
+                    review=None if run.review is None else run.review.model_dump(mode="json"),
+                    tool_call_log=[c.model_dump(mode="json") for c in run.tool_calls],
                     tool_calls=len(run.tool_calls),
                     tool_errors=sum(1 for c in run.tool_calls if c.is_error),
                     turns=run.turns,
