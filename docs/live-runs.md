@@ -23,4 +23,5 @@ Run `review` once per week you want covered; `eval` once per prompt or model cha
 ## Rules
 
 - Never schedule the pull on the hour; Hevy asks for a random minute.
+- `private/` and `out/` live only in the session's container, which is wiped after a period of inactivity. Archive both after each live run (for example `tar -czf coach-data-<date>.tar.gz private out`) and keep the archive outside the repository; it holds personal data.
 - Record failures in `docs/findings.md` as aggregates: date, model, what went wrong, what changed, pass rate before and after. No set data, no review text from a real week.
