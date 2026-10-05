@@ -21,6 +21,7 @@ Date: 2026-10-05. Branch `claude/funny-cori-evrx1v`.
 | `no_false_alarm` | Any concern about an exercise with no planted problem, including "Overall" when no sessions were planted missed. | A false alarm phrased as a highlight or a suggestion; a planted exercise flagged for the wrong reason. |
 | `exercises_exist` | Invented or misspelt exercise names. | A real name attached to the wrong claim. |
 | `kg_grounded` | Any kilogram figure in the headline, highlights or concerns that is not in the figures or a successful tool result, within 0.5 kg. | Percentages, rep counts, session counts and week numbers (not checked); a correct number attached to the wrong exercise; suggestions (deliberately excluded, they may propose new loads). |
+| `comparisons_grounded` | A superlative (fastest, largest, strongest and the like) about an exercise that leads on no figure, an "Overall" superlative naming no leader, and "all" or "every" exercises progressing when `counts` says otherwise. Added in the follow-up, findings entry 10. | "highest" and "best", which usually compare an exercise with its own history; a wrong percentage attached to the right exercise; the window a change is labelled with. |
 | `concern_preceded_by_tool` | A trend judgement made without looking at the history. | A tool call for the right exercise but too short a window to see the story. |
 | `max_three_suggestions` | Redundant with `schema_valid` while Pydantic enforces the cap; kept so the count is visible if the schema ever changes. | Three bad suggestions. |
 

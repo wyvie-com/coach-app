@@ -14,3 +14,6 @@ Things named during the build that are larger than this side project needs now. 
 - A `coach eval --rescore <trials.jsonl>` command that re-runs the code checks over stored reviews without paying for new ones; the trial record now carries the review for this reason.
 - A spend estimate before a paid eval run, with a confirmation prompt above a threshold, so an exhausted credit balance is caught before the run rather than during it.
 - Offline re-grading: grade stored reviews from a `trials.jsonl` with a different grader model without regenerating the reviews, so grader comparisons are on identical reviews.
+
+- **Fewer fields in the figures.** After `leaders` and `counts` (findings entry 10) each exercise carries two percentage changes and the grader's remaining criticisms are percentages moved between them. A trimmed figures block for the model, with the full one kept for the files, is the next experiment: remove `volume_prior_week_kg` and `e1rm_change_4w_kg` (keep the percentages) and measure `follows_from_data` at three trials per case.
+

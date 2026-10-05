@@ -59,6 +59,7 @@ def test_check_names_match_the_spec() -> None:
         "concern_preceded_by_tool",
         "max_three_suggestions",
         "sessions_threshold",
+        "comparisons_grounded",
     )
 
 
@@ -351,3 +352,60 @@ def test_sessions_threshold_blocks_a_concern_under_one_missed_session(stall) -> 
         ].passed
         is True
     )
+
+
+def _review_with(highlight: Finding) -> Review:
+    return Review(headline="h", highlights=[highlight], concerns=[], suggestions=[])
+
+
+def test_comparisons_grounded_accepts_the_leader_and_rejects_another_exercise(stall) -> None:
+    data, figures = stall
+    leader = figures.leaders.e1rm_change_4w_pct
+    assert leader is not None
+    other = BENCH  # flat on every figure in this case, so it leads nothing
+    assert other not in figures.leaders.model_dump().values()
+    good = _review_with(Finding(exercise=leader, text="The largest four-week e1RM gain."))
+    bad = _review_with(Finding(exercise=other, text="The largest four-week e1RM gain."))
+    assert _by_name(run_checks(_case("bench_stall-1"), figures, _run(good, []), data.workouts))[
+        "comparisons_grounded"
+    ].passed
+    result = _by_name(run_checks(_case("bench_stall-1"), figures, _run(bad, []), data.workouts))[
+        "comparisons_grounded"
+    ]
+    assert not result.passed and other in result.detail and "largest" in result.detail
+
+
+def test_comparisons_grounded_overall_superlative_must_name_a_leader(stall) -> None:
+    data, figures = stall
+    leader = figures.leaders.e1rm_change_4w_pct
+    named = _review_with(Finding(exercise="Overall", text=f"{leader} grew fastest."))
+    unnamed = _review_with(Finding(exercise="Overall", text="The squat grew fastest."))
+    assert _by_name(run_checks(_case("bench_stall-1"), figures, _run(named, []), data.workouts))[
+        "comparisons_grounded"
+    ].passed
+    assert not _by_name(
+        run_checks(_case("bench_stall-1"), figures, _run(unnamed, []), data.workouts)
+    )["comparisons_grounded"].passed
+
+
+def test_comparisons_grounded_universal_claim_needs_a_full_count(stall) -> None:
+    data, figures = stall
+    assert figures.counts.e1rm_up_4w < figures.counts.exercises  # the bench is flat
+    claim = _review_with(Finding(exercise="Overall", text="Every lift improved this month."))
+    result = _by_name(run_checks(_case("bench_stall-1"), figures, _run(claim, []), data.workouts))[
+        "comparisons_grounded"
+    ]
+    assert not result.passed and "Every lift improved" in result.detail
+    trained = _review_with(Finding(exercise="Overall", text="Every lift was trained three times."))
+    assert _by_name(run_checks(_case("bench_stall-1"), figures, _run(trained, []), data.workouts))[
+        "comparisons_grounded"
+    ].passed
+
+
+def test_comparisons_grounded_lets_the_leader_say_it_led_all_exercises(stall) -> None:
+    data, figures = stall
+    leader = figures.leaders.e1rm_change_4w_pct
+    led = _review_with(Finding(exercise=leader, text="Led all exercises with the largest gain."))
+    assert _by_name(run_checks(_case("bench_stall-1"), figures, _run(led, []), data.workouts))[
+        "comparisons_grounded"
+    ].passed

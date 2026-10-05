@@ -28,7 +28,7 @@ rendered as JSON for the model's user turn and validated against later. Rules:
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from statistics import mean
 
 from pydantic import BaseModel, ConfigDict
@@ -75,6 +75,8 @@ class ExerciseFigures(_Frozen):
     warmup_sets: int
     other_sets: int
     volume_kg: float
+    volume_prior_week_kg: float | None
+    volume_change_1w_pct: float | None
     top_set: TopSet | None
     e1rm_kg: float | None
     mean_rpe: float | None
@@ -84,6 +86,29 @@ class ExerciseFigures(_Frozen):
     matched_load_prior_best_reps: int | None
     rep_pr: bool
     top_set_unchanged_weeks: int | None
+
+
+class Leaders(_Frozen):
+    """Which exercise leads on each comparable figure; None when no data or a tie at the top.
+
+    The review kept naming the wrong exercise as "fastest" or "largest" when left to compare
+    six rows itself (docs/findings.md), so the ranking is done here and the model copies it.
+    """
+
+    e1rm_change_4w_pct: str | None
+    volume_change_1w_pct: str | None
+    volume_kg: str | None
+
+
+class Counts(_Frozen):
+    """How many exercises moved which way, so "all" and "every" can be checked against a number."""
+
+    exercises: int
+    e1rm_up_4w: int
+    e1rm_flat_4w: int
+    e1rm_down_4w: int
+    volume_up_1w: int
+    volume_down_1w: int
 
 
 class WeekFigures(_Frozen):
@@ -96,6 +121,8 @@ class WeekFigures(_Frozen):
     sessions_missed: float | None
     session_titles: list[str]
     exercises: list[ExerciseFigures]
+    leaders: Leaders
+    counts: Counts
     warnings: list[str]
 
 
@@ -145,6 +172,11 @@ def _e1rm(sets: Sequence[Set]) -> float | None:
         if s.weight_kg is not None and s.reps and s.reps <= E1RM_MAX_REPS
     ]
     return max(values) if values else None
+
+
+def _volume(sets: Sequence[Set]) -> float:
+    """Weight times reps over the given working sets, to one decimal."""
+    return round(sum(s.weight_kg * s.reps for s in sets if s.weight_kg is not None and s.reps), 1)
 
 
 def _mean_rpe(sets: Sequence[Set]) -> float | None:
@@ -216,6 +248,9 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
         prior_reps = (
             None if top is None else _prior_best_reps(by_week, week, template_id, top.weight_kg)
         )
+        volume = _volume(working)
+        prior_working = _working(_exercises_in(by_week.get(week.shift(-1), []), template_id))
+        prior_volume = _volume(prior_working) if prior_working else None
         exercises.append(
             ExerciseFigures(
                 exercise=titles[template_id],
@@ -226,12 +261,9 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
                 working_sets=len(working),
                 warmup_sets=len(sets) - len(working),
                 other_sets=sum(1 for s in working if s.kind.value == "other"),
-                volume_kg=round(
-                    sum(
-                        s.weight_kg * s.reps for s in working if s.weight_kg is not None and s.reps
-                    ),
-                    1,
-                ),
+                volume_kg=volume,
+                volume_prior_week_kg=prior_volume,
+                volume_change_1w_pct=_round(_pct(volume, prior_volume)),
                 top_set=None
                 if top is None
                 else TopSet(weight_kg=top.weight_kg, reps=top.reps, rpe=top.rpe),
@@ -272,6 +304,19 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
         sessions_missed=None if baseline is None else _round(max(0.0, baseline - sessions), 2),
         session_titles=[w.title[:TITLE_LIMIT] for w in this_week],
         exercises=exercises,
+        leaders=Leaders(
+            e1rm_change_4w_pct=_leader(exercises, "e1rm_change_4w_pct"),
+            volume_change_1w_pct=_leader(exercises, "volume_change_1w_pct"),
+            volume_kg=_leader(exercises, "volume_kg"),
+        ),
+        counts=Counts(
+            exercises=len(exercises),
+            e1rm_up_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v > 0),
+            e1rm_flat_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v == 0),
+            e1rm_down_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v < 0),
+            volume_up_1w=_count(exercises, "volume_change_1w_pct", lambda v: v > 0),
+            volume_down_1w=_count(exercises, "volume_change_1w_pct", lambda v: v < 0),
+        ),
         warnings=warnings,
     )
 
@@ -294,6 +339,21 @@ def _unchanged_weeks(tops: Sequence[Set | None]) -> int | None:
             break
         unchanged += 1
     return unchanged
+
+
+def _leader(exercises: Sequence[ExerciseFigures], attr: str) -> str | None:
+    """The exercise with the highest value of ``attr``; None without data or when two tie."""
+    ranked = sorted(
+        ((getattr(e, attr), e.exercise) for e in exercises if getattr(e, attr) is not None),
+        reverse=True,
+    )
+    if not ranked or (len(ranked) > 1 and ranked[0][0] == ranked[1][0]):
+        return None
+    return ranked[0][1]
+
+
+def _count(exercises: Sequence[ExerciseFigures], attr: str, test: Callable[[float], bool]) -> int:
+    return sum(1 for e in exercises if getattr(e, attr) is not None and test(getattr(e, attr)))
 
 
 def _comparison_e1rm(

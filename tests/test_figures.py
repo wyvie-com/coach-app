@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 import pytest
@@ -258,6 +259,38 @@ def test_rep_pr_ignores_loads_older_than_twelve_weeks() -> None:
     this = _workout(W40, 0, [_bench(90.0, reps=8)])
     bench = week_figures([old, this], W40).exercises[0]
     assert bench.matched_load_prior_best_reps is None and bench.rep_pr is False
+
+
+def test_leaders_and_counts_name_the_exercise_the_figures_support() -> None:
+    def squat(top: float):
+        return replace(_bench(top, title="Squat (Barbell)"), template_id="TPL00001")
+
+    weeks_back = [4, 1, 0]
+    bench_loads, squat_loads = {4: 80.0, 1: 80.0, 0: 82.5}, {4: 100.0, 1: 100.0, 0: 110.0}
+    workouts = [
+        _workout(W40.shift(-b), 0, [_bench(bench_loads[b]), squat(squat_loads[b])])
+        for b in weeks_back
+    ]
+    figures = week_figures(workouts, W40)
+    assert figures.leaders.e1rm_change_4w_pct == "Squat (Barbell)"
+    assert figures.leaders.volume_change_1w_pct == "Squat (Barbell)"
+    assert figures.leaders.volume_kg == "Squat (Barbell)"
+    assert figures.counts.exercises == 2
+    assert (figures.counts.e1rm_up_4w, figures.counts.e1rm_flat_4w) == (2, 0)
+    assert (figures.counts.volume_up_1w, figures.counts.volume_down_1w) == (2, 0)
+    tie = week_figures([_workout(W40, 0, [_bench(80.0), squat(80.0)])], W40)
+    assert tie.leaders.volume_kg is None and tie.leaders.e1rm_change_4w_pct is None
+    assert tie.counts.e1rm_up_4w == 0 and tie.counts.volume_up_1w == 0
+
+
+def test_prior_week_volume_and_one_week_change() -> None:
+    last = _workout(W40.shift(-1), 0, [_bench(80.0, reps=5)])  # two working sets each
+    this = _workout(W40, 0, [_bench(82.5, reps=5)])
+    bench = week_figures([last, this], W40).exercises[0]
+    assert bench.volume_prior_week_kg == pytest.approx(800.0)
+    assert bench.volume_change_1w_pct == pytest.approx(3.1, abs=0.05)
+    alone = week_figures([this], W40).exercises[0]
+    assert alone.volume_prior_week_kg is None and alone.volume_change_1w_pct is None
 
 
 def test_top_set_unchanged_weeks_counts_back_from_the_latest_week() -> None:

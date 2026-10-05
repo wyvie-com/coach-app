@@ -14,11 +14,24 @@ The plan agreed with the owner, in order: a docs line on saving run outputs; the
 
 Decision: fix the figures, not the prompt alone. The failing reviews showed the model deciding "stalled" from the history's shape before it had the count in front of it. Putting the count in the figures is the project's thesis applied once more: code computes, the model reads.
 
+## Step 3: the weaknesses the stronger grader found
+
+`docs/findings.md` entry 10. Two passes. The first added prior-week volume and a prompt rule; it changed nothing the grader could see. The second moved the comparison into code (`leaders`, `counts`), added the `comparisons_grounded` check, and halved the number of tool calls as a side effect. Wrong superlatives fell from 5 of 16 to 1 of 16.
+
+Decisions:
+
+- **Measure with a code check, not the rubric.** At one trial per case the rubric cannot resolve a change under half a point. The check can count the exact error the grader described, costs nothing, and runs on real weeks too.
+- **Exempt the leader from the universal-claim check.** "Led all exercises with 14.3%" by the exercise that leads is a ranking, which the leaders figure backs; the first version of the check failed it.
+- **Stop at two passes.** The remaining grader criticisms are percentages moved between fields of the same exercise. Fixing that means fewer fields in the figures, which is a design change for `docs/later.md`, not a third pass on this plan.
+
 ## Spend
 
 | Run | Trials | Cost |
 | --- | --- | --- |
 | step 2: hold and stall cases | 9 | $0.28 |
-| **total since v0.1.0** | | **$0.28** |
+| step 3, pass 1: 16 cases, Sonnet grader | 16 | $0.49 |
+| step 3, pass 2: 16 cases, Sonnet grader | 16 | $0.39 |
+| step 3, pass 2 re-run of five cases | 5 | $0.12 |
+| **total since v0.1.0** | | **$1.28** |
 
 Project total: $8.93 (slice 5 note) plus the table above.

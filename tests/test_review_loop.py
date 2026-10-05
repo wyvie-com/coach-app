@@ -260,3 +260,9 @@ def test_system_prompt_defines_stalled() -> None:
     assert "four or more" in SYSTEM_PROMPT
     assert "top_set_unchanged_weeks" in SYSTEM_PROMPT and "not a concern" in SYSTEM_PROMPT
     assert 'report it in concerns under "Overall"' in SYSTEM_PROMPT
+
+
+def test_system_prompt_governs_comparisons_and_windows() -> None:
+    assert "volume_change_1w_pct" in SYSTEM_PROMPT
+    assert "leaders" in SYSTEM_PROMPT and "counts" in SYSTEM_PROMPT
+    assert "four weeks" in SYSTEM_PROMPT and "eight weeks" in SYSTEM_PROMPT

@@ -11,7 +11,8 @@ Hevy API ──pull──▶ private/hevy/<date>/*.json      raw pages, verbatim
                         │
                     model.py                         internal Workout / Exercise / Set, Melbourne ISO weeks
                         │
-                   figures.py                        every number: volume, top set, e1RM (≤10 reps), rep PR,
+                   figures.py                        every number: volume and its one-week change, top set,
+                        │                            unchanged weeks, e1RM (≤10 reps), rep PR,
                         │                            sessions baseline, 1 to 12 week history
                         ▼
    ┌─────────── review/loop.py ───────────┐

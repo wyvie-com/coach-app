@@ -30,6 +30,7 @@ CHECK_NAMES = (
     "concern_preceded_by_tool",
     "max_three_suggestions",
     "sessions_threshold",
+    "comparisons_grounded",
 )
 #: The checks that need no planted story, so they also run on a real week's review.
 DATA_CHECK_NAMES = (
@@ -39,10 +40,22 @@ DATA_CHECK_NAMES = (
     "concern_preceded_by_tool",
     "max_three_suggestions",
     "sessions_threshold",
+    "comparisons_grounded",
 )
 KG_TOLERANCE = 0.5
 _KG = re.compile(r"(\d+(?:\.\d+)?)\s*(?:kg|kilograms?)\b", re.IGNORECASE)
 _SESSIONS = re.compile(r"\bsessions?\b", re.IGNORECASE)
+#: Words that rank one exercise against the others. "highest" and "best" are left out because
+#: they usually compare one exercise with its own history, which this check cannot judge.
+_SUPERLATIVE = re.compile(
+    r"\b(fastest|largest|biggest|strongest|greatest|slowest|smallest|weakest)\b", re.IGNORECASE
+)
+_UNIVERSAL = re.compile(
+    r"\b(?:all|every)\s+(?:\w+\s+)?(?:exercises?|lifts?|movements?)\b.{0,60}?"
+    r"\b(?:improv|increas|rose|rising|progress|gain|grew|growth|advanc|higher|up)\w*"
+    r"|across the board",
+    re.IGNORECASE,
+)
 #: Prompt rule 9: sessions missed is a concern only at this value or more.
 SESSIONS_CONCERN_THRESHOLD = 1.0
 
@@ -199,7 +212,47 @@ def _data_checks(
             ),
         )
     )
+    results.append(_comparisons_check(review, figures))
     return results
+
+
+def _comparisons_check(review: Review, figures: WeekFigures) -> CheckResult:
+    """A ranking of exercises must match ``leaders``; "all" or "every" must match ``counts``.
+
+    Added after the Sonnet grader found a wrong "fastest" or "largest" in 5 of 16 reviews
+    (docs/findings.md). A finding about one exercise may use a superlative only when that
+    exercise leads on some figure; an "Overall" finding must name a leader in its text.
+    A universal claim of progress passes only when every exercise rose on e1RM or on volume.
+    """
+    leaders = {name for name in figures.leaders.model_dump().values() if name}
+    counts = figures.counts
+    offences: list[str] = []
+    findings = [("Overall", review.headline)] + [
+        (f.exercise, f.text) for f in review.highlights + review.concerns + review.suggestions
+    ]
+    for exercise, text in findings:
+        for match in _SUPERLATIVE.finditer(text):
+            supported = (
+                exercise in leaders
+                if exercise != "Overall"
+                else any(name in text for name in leaders)
+            )
+            if not supported:
+                offences.append(f"{exercise}: '{match.group(0)}' not backed by leaders")
+        if exercise in leaders:
+            continue  # "led all exercises" by the exercise that does lead is a ranking, not a claim
+        for match in _UNIVERSAL.finditer(text):
+            full = counts.exercises > 0 and counts.exercises in (
+                counts.e1rm_up_4w,
+                counts.volume_up_1w,
+            )
+            if not full:
+                offences.append(f"{exercise}: '{match.group(0)}' against counts")
+    return CheckResult(
+        name="comparisons_grounded",
+        passed=not offences,
+        detail="rankings match leaders and counts" if not offences else "; ".join(offences),
+    )
 
 
 def _story_checks(case: Case, review: Review) -> list[CheckResult]:
