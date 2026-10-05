@@ -281,6 +281,16 @@ def test_top_set_unchanged_weeks_counts_back_from_the_latest_week() -> None:
     )
 
 
+def test_week_figures_carry_the_unchanged_weeks_count_over_twelve_weeks() -> None:
+    loads = {4: 75.0, 3: 80.0, 2: 80.0, 1: 80.0, 0: 80.0}
+    workouts = [_workout(W40.shift(-back), 0, [_bench(load)]) for back, load in loads.items()]
+    assert week_figures(workouts, W40).exercises[0].top_set_unchanged_weeks == 4
+    risen = workouts + [_workout(W40.shift(1), 0, [_bench(82.5)])]
+    assert week_figures(risen, W40.shift(1)).exercises[0].top_set_unchanged_weeks == 1
+    flat_for_long = [_workout(W40.shift(-back), 0, [_bench(80.0)]) for back in range(14)]
+    assert week_figures(flat_for_long, W40).exercises[0].top_set_unchanged_weeks == 12
+
+
 def test_top_set_unchanged_weeks_skips_empty_weeks_and_is_none_without_data() -> None:
     workouts = [_workout(W40, 0, [_bench(80.0)]), _workout(W40.shift(-2), 0, [_bench(80.0)])]
     history = exercise_history(workouts, "Bench Press (Barbell)", weeks=4, ending=W40)

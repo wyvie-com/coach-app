@@ -83,6 +83,7 @@ class ExerciseFigures(_Frozen):
     e1rm_change_4w_pct: float | None
     matched_load_prior_best_reps: int | None
     rep_pr: bool
+    top_set_unchanged_weeks: int | None
 
 
 class WeekFigures(_Frozen):
@@ -241,6 +242,14 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
                 e1rm_change_4w_pct=_round(_pct(now, then)),
                 matched_load_prior_best_reps=prior_reps,
                 rep_pr=top is not None and prior_reps is not None and top.reps > prior_reps,
+                top_set_unchanged_weeks=_unchanged_weeks(
+                    [
+                        _top_set(
+                            _working(_exercises_in(by_week.get(week.shift(-back), []), template_id))
+                        )
+                        for back in range(MAX_HISTORY_WEEKS - 1, -1, -1)
+                    ]
+                ),
             )
         )
     exercises.sort(key=lambda e: (-e.volume_kg, e.exercise))
@@ -265,6 +274,26 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
         exercises=exercises,
         warnings=warnings,
     )
+
+
+def _unchanged_weeks(tops: Sequence[Set | None]) -> int | None:
+    """Consecutive weeks, counting back from the latest, with the same top set (load and reps).
+
+    Weeks with no data are skipped rather than breaking the run, so a missed week does not
+    reset a stall. None when no week in the window has a top set. The count lives in code
+    because "how long has this been flat" is the one judgement the review most often got
+    wrong when left to the model.
+    """
+    with_top = [t for t in tops if t is not None]
+    if not with_top:
+        return None
+    final = (with_top[-1].weight_kg, with_top[-1].reps)
+    unchanged = 0
+    for top in reversed(with_top):
+        if (top.weight_kg, top.reps) != final:
+            break
+        unchanged += 1
+    return unchanged
 
 
 def _comparison_e1rm(
@@ -345,15 +374,12 @@ def exercise_history(
     with_data = [e for e in entries if e.e1rm_kg is not None]
     first, last = (with_data[0], with_data[-1]) if len(with_data) >= 2 else (None, None)
     rpe_pair = [e.mean_rpe for e in with_data if e.mean_rpe is not None]
-    with_top = [e for e in entries if e.top_set_kg is not None]
-    unchanged: int | None = None
-    if with_top:
-        final = (with_top[-1].top_set_kg, with_top[-1].top_set_reps)
-        unchanged = 0
-        for entry in reversed(with_top):
-            if (entry.top_set_kg, entry.top_set_reps) != final:
-                break
-            unchanged += 1
+    unchanged = _unchanged_weeks(
+        [
+            _top_set(_working(_exercises_in(by_week.get(ending.shift(-back), []), template_id)))
+            for back in range(weeks - 1, -1, -1)
+        ]
+    )
     return ExerciseHistory(
         exercise=title,
         template_id=template_id,
