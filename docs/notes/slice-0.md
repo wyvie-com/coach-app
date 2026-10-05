@@ -33,7 +33,7 @@ The Hevy route was `proxy`: `HEVY_API_KEY` is not set, the placeholder was sent,
 - **gitleaks over detect-secrets.** gitleaks has an official pre-commit hook, a single pinned binary for CI, and `--redact` so a finding never prints the value. Rejected: `gitleaks/gitleaks-action`, which requires a licence key for organisation repositories; downloading the release binary with a checksum avoids that and keeps CI free of third-party actions beyond checkout and setup-uv.
 - **`src/` layout.** The spec said `coach/`; the package is still `coach`, under `src/`, because uv's build backend defaults to it and it stops tests importing the working copy by accident.
 - **Repository-wide gitleaks history scan in CI, staged-only scan in the hook.** The hook's documented entry scans staged changes, which is the right pre-commit cost; CI scans every commit with `fetch-depth: 0` so nothing slips through a hook that was not installed.
-- **Pinned action majors** `actions/checkout@v7` and `astral-sh/setup-uv@v10` (latest majors on their releases pages, 2026-10-05; Secondary).
+- **Pinned action majors** `actions/checkout@v7` and `astral-sh/setup-uv@v10.2.0` (tags read with `git ls-remote` on 2026-10-05; setup-uv publishes no floating `v10` tag, which failed the first CI run; Secondary).
 
 ## How to run it
 
@@ -48,7 +48,7 @@ uv run coach check-credentials
 
 ## What it does not do yet
 
-No Hevy client, no pagination, no raw page store, no figures, no model call beyond listing models. The LICENSE names "the coach-app authors" as copyright holder pending your name. CI has not yet been observed green at the time this note was written; the first run is reported in the slice 0 message.
+No Hevy client, no pagination, no raw page store, no figures, no model call beyond listing models. The LICENSE names "the coach-app authors" as copyright holder pending your name. The first CI run failed on an unresolvable `astral-sh/setup-uv@v10` pin; the second run, with the exact tag, is reported in the slice 0 message.
 
 ## Three questions an interviewer might ask
 
