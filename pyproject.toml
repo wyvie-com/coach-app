@@ -1,0 +1,46 @@
+[project]
+name = "coach"
+version = "0.0.1"
+description = "A personal AI training coach on Hevy data: code computes, Claude interprets, evals judge."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=1.11,<2",
+    "httpx>=0.28,<1",
+    "pydantic>=2.13,<3",
+]
+
+[project.scripts]
+coach = "coach.cli:main"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6,<5",
+    "pytest>=8.4,<9",
+    "ruff>=0.16.10,<0.17",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.17,<0.9"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "N", "D"]
+# D105/D107: magic methods and __init__ need no docstring when the class docstring says why.
+ignore = ["D203", "D213", "D105", "D107"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

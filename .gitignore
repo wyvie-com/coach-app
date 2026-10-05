@@ -1,0 +1,16 @@
+# Data boundary: real account data and run outputs never leave this machine.
+private/
+out/
+
+# Secrets. Only the example file, which holds names and no values, is tracked.
+.env*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/

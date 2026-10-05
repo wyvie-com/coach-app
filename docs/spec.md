@@ -140,7 +140,7 @@ coach eval --model claude-haiku-4-5-20251001 --trials 3
 | Secrets in `out/` or fixtures. | Both directories gitignored; gitleaks pre-commit and CI; fixtures generated, never copied. |
 | Trial variance hides regressions. | Report "passed in every trial" beside pass rate; three trials minimum. |
 
-Nothing here blocks slice 0. One choice to confirm at the slice 3 gate: `claude-sonnet-5-5` as the main comparator with a single `claude-opus-5-5` run for the architecture note.
+Decided 2026-10-05 (product owner): the eval report compares Haiku 4.5 against `claude-sonnet-5-5` as the main comparator, with a single `claude-opus-5-5` run for the architecture note.
 
 ## 9. Out of scope
 

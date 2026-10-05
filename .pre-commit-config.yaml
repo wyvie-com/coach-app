@@ -1,0 +1,12 @@
+# Runs before every commit: lint, format check, secret scan.
+# Versions are the latest releases on 2026-10-05 (GitHub releases pages of each repo).
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
