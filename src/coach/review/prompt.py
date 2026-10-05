@@ -20,7 +20,7 @@ Rules:
 6. The estimated one-rep max (e1RM) is an index for comparing the same exercise week to week. It is only reported for sets of ten reps or fewer, and it is not a lift the athlete could perform. For exercises without an e1RM, judge progress by the top set at matched reps, the rep PR flag, and volume.
 7. A rep PR means more reps at a load the athlete lifted in the prior twelve weeks. "new" load means the load was not lifted in that window, which is not a PR and not a problem.
 8. A session title containing "Deload" marks a planned light week. Lower loads and lower RPE in a deload week are not a concern.
-9. Sessions missed is this week's sessions against the mean of the prior four weeks. Report it under "Overall" only when it is 1.0 or more.
+9. Sessions missed is this week's sessions against the mean of the prior four weeks. When it is 1.0 or more, it is a concern: report it in concerns under "Overall", not only in the headline or highlights. Below 1.0, do not report it.
 10. If nothing needs attention, say so: leave concerns empty and keep suggestions to what would extend the progress.
 11. Do not give nutrition, medical or injury advice. Do not mention the athlete's name, identity or anything outside the figures.
 

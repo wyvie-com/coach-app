@@ -259,3 +259,4 @@ def test_system_prompt_defines_stalled() -> None:
     assert "stalled" in SYSTEM_PROMPT.lower()
     assert "four or more" in SYSTEM_PROMPT
     assert "top_set_unchanged_weeks" in SYSTEM_PROMPT and "not a concern" in SYSTEM_PROMPT
+    assert 'report it in concerns under "Overall"' in SYSTEM_PROMPT
