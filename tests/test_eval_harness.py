@@ -202,3 +202,31 @@ def test_an_api_error_is_recorded_and_the_run_stops_with_a_report(tmp_path: Path
     )
     assert (tmp_path / "report.md").exists() and (tmp_path / "report.json").exists()
     assert "stopped early" in (tmp_path / "report.md").read_text()
+
+
+def test_budget_cap_stops_the_run_and_is_recorded(tmp_path: Path) -> None:
+    class PricedReviewer(FixedReviewer):
+        def create(self, **kwargs: Any) -> Message:
+            msg = super().create(**kwargs)
+            return msg.model_copy(update={"usage": Usage(input_tokens=100_000, output_tokens=1000)})
+
+    report = run_eval(
+        cases=CASES[:4],
+        models=[HAIKU],
+        trials=1,
+        review_client=lambda model: PricedReviewer(model),
+        grader_client=FixedGrader(),
+        grader_model=HAIKU,
+        out_dir=tmp_path,
+        budget_usd=0.25,  # each trial costs about $0.21 at 100k input tokens per request
+    )
+    haiku = report.models[0]
+    assert len(haiku.trials) == 2  # the second trial crossed the cap; nothing started after it
+    assert report.stopped_early is not None and "budget" in report.stopped_early
+    assert report.total_cost_usd > 0.25
+
+
+def test_estimate_cost() -> None:
+    from coach.evals.harness import estimate_usd
+
+    assert estimate_usd(cases=16, trials=3, models=2) == pytest.approx(16 * 3 * 2 * 0.045)

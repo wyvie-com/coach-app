@@ -112,6 +112,15 @@ class EvalReport(BaseModel):
     stopped_early: str | None = None
 
 
+#: Mean cost of one trial (review plus Haiku grading) on the 2026-10-05 runs; for estimates only.
+USD_PER_TRIAL_ESTIMATE = 0.045
+
+
+def estimate_usd(*, cases: int, trials: int, models: int) -> float:
+    """A rough spend estimate to print before a paid run starts."""
+    return cases * trials * models * USD_PER_TRIAL_ESTIMATE
+
+
 def ensure_credentials(client: ClaudeClient) -> None:
     """Refuse to start a paid run unless the Anthropic route answers 200."""
     result = credentials.check_anthropic(client)  # type: ignore[arg-type]
@@ -180,8 +189,13 @@ def run_eval(
     grader_model: str,
     out_dir: Path,
     log: Callable[[str], None] = lambda _: None,
+    budget_usd: float | None = None,
 ) -> EvalReport:
-    """Run the suite and write trials.jsonl, report.json and report.md under out_dir."""
+    """Run the suite and write trials.jsonl, report.json and report.md under out_dir.
+
+    ``budget_usd`` stops the run, after the trial that crosses it, so an estimate that
+    was wrong costs one trial rather than the rest of the run.
+    """
     from coach.evals.report import render_markdown  # local import: report imports this module
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -189,6 +203,7 @@ def run_eval(
     built = [build_case(case) for case in cases]
     reports: list[ModelReport] = []
     stopped_early: str | None = None
+    spent = 0.0
     for model in _order(models):
         if stopped_early:
             break
@@ -262,11 +277,19 @@ def run_eval(
                 with jsonl.open("a") as handle:
                     handle.write(record.model_dump_json() + "\n")
                 failed = [n for n, ok in record.checks.items() if not ok]
+                spent += record.review_cost_usd + record.grader_cost_usd
                 log(
                     f"{model} {record.case} t{trial}: {record.outcome}, "
                     f"{len(failed)} failed{' (' + ', '.join(failed) + ')' if failed else ''}, "
-                    f"${record.review_cost_usd + record.grader_cost_usd:.4f}"
+                    f"${record.review_cost_usd + record.grader_cost_usd:.4f} (run ${spent:.2f})"
                 )
+                if budget_usd is not None and spent > budget_usd:
+                    stopped_early = (
+                        f"{model} {data.case.name} trial {trial}: budget ${budget_usd:.2f} "
+                        f"exceeded (${spent:.2f})"
+                    )
+                    log(f"{stopped_early}; stopping.")
+                    break
         reports.append(
             ModelReport(
                 model=model, summary=_summarise(records, [c.name for c in cases]), trials=records

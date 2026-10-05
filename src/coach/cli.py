@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from coach import credentials, settings
 from coach.evals.cases import CASES
 from coach.evals.checks import run_data_checks
-from coach.evals.harness import ensure_credentials, run_eval
+from coach.evals.harness import ensure_credentials, estimate_usd, run_eval
 from coach.evals.report import render_markdown as render_eval
 from coach.evals.rescore import rescore
 from coach.figures import format_table, week_figures
@@ -121,6 +121,12 @@ def _eval(args: argparse.Namespace) -> int:
             print(f"unknown cases: {', '.join(sorted(unknown))}", file=sys.stderr)
             return 1
     models = args.model or [settings.review_model()]
+    estimate = estimate_usd(cases=len(cases), trials=args.trials, models=len(models))
+    print(
+        f"estimated spend about ${estimate:.2f} for {len(cases)} cases x {args.trials} trials "
+        f"x {len(models)} model(s)"
+        + (f"; budget cap ${args.budget_usd:.2f}" if args.budget_usd is not None else "")
+    )
     stamp = datetime.now(LOCAL_ZONE).strftime("%Y%m%dT%H%M%S")
     out_dir = args.out / stamp
     report = run_eval(
@@ -132,6 +138,7 @@ def _eval(args: argparse.Namespace) -> int:
         grader_model=args.grader_model,
         out_dir=out_dir,
         log=print,
+        budget_usd=args.budget_usd,
     )
     print()
     print(render_eval(report).split("## Cases")[0])
@@ -187,6 +194,11 @@ def build_parser() -> argparse.ArgumentParser:
     eval_cmd.add_argument("--grader-model", default=settings.DEFAULT_MODEL)
     eval_cmd.add_argument("--cases", help="Comma-separated case names; default all fifteen")
     eval_cmd.add_argument("--out", type=Path, default=Path("out/eval"))
+    eval_cmd.add_argument(
+        "--budget-usd",
+        type=float,
+        help="Stop after the trial that takes the run's spend past this.",
+    )
     eval_cmd.set_defaults(func=_eval)
     rescore_cmd = sub.add_parser(
         "rescore", help="Re-run the code checks over a stored trials.jsonl; no model call."
