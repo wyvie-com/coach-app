@@ -279,6 +279,7 @@ def run_eval(
         cases=[c.name for c in cases],
         models=reports,
         total_cost_usd=sum(r.summary.cost_total_usd for r in reports),
+        stopped_early=stopped_early,
     )
     (out_dir / "report.json").write_text(report.model_dump_json(indent=2) + "\n")
     (out_dir / "report.md").write_text(render_markdown(report))

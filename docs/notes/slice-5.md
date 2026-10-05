@@ -10,7 +10,7 @@ Date: 2026-10-05. Branch `claude/funny-cori-evrx1v`. Tag `v0.1.0`.
 - Two findings from the real weeks became a case and a check (`docs/findings.md` entries 4 and 5); two from the eval became a check refinement and a prompt definition (entries 1 and 2); one grader fix (entry 3). A prompt sentence that measurably hurt stall detection was withdrawn the same day and replaced by a code-computed `top_set_unchanged_weeks` in the tool result.
 - The harness records an API error (billing, auth, outage) as a trial with outcome `api_error`, stops, and still writes the report with a "stopped early" line. Found the hard way when the account's credit ran out mid-run.
 - `README.md` for two audiences, `docs/architecture.md` with the trade-offs and the secrets and data boundary, `docs/findings.md`.
-- Tests: 141 in total.
+- Tests: 142 in total.
 
 ## Spend
 

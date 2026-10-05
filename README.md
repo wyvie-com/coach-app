@@ -33,7 +33,7 @@ src/coach/
 
 ```
 uv sync
-uv run pytest                                   # 141 tests, no network, no key
+uv run pytest                                   # 142 tests, no network, no key
 cp .env.example .env                            # COACH_ANTHROPIC_API_KEY; HEVY_API_KEY or the proxy route
 uv run coach check-credentials                  # two status codes, nothing else
 uv run coach pull                               # private/hevy/<date>/
