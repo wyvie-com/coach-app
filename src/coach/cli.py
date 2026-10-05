@@ -11,8 +11,10 @@ from zoneinfo import ZoneInfo
 
 from coach import credentials, settings
 from coach.evals.cases import CASES
+from coach.evals.checks import run_data_checks
 from coach.evals.harness import ensure_credentials, run_eval
 from coach.evals.report import render_markdown as render_eval
+from coach.evals.rescore import rescore
 from coach.figures import format_table, week_figures
 from coach.hevy.client import HevyClient, HevyError
 from coach.hevy.pull import format_summary, pull
@@ -90,11 +92,17 @@ def _review(args: argparse.Namespace) -> int:
     model = args.model or settings.review_model()
     figures = week_figures(workouts, week)
     run = run_review(client, model, figures, workouts)
-    directory = write_run(args.out, figures, run)
+    checks = run_data_checks(figures, run, workouts)
+    directory = write_run(args.out, figures, run, checks)
     print(f"pull {pulled}  week {week}  model {model}")
-    print(render_markdown(figures, run))
+    print(render_markdown(figures, run, checks))
     print(f"written to {directory}")
     return 0 if run.outcome == "ok" else 1
+
+
+def _rescore(args: argparse.Namespace) -> int:
+    print(rescore(args.trials, allow_differences=not args.strict_grounding).render())
+    return 0
 
 
 def _eval(args: argparse.Namespace) -> int:
@@ -180,6 +188,16 @@ def build_parser() -> argparse.ArgumentParser:
     eval_cmd.add_argument("--cases", help="Comma-separated case names; default all fifteen")
     eval_cmd.add_argument("--out", type=Path, default=Path("out/eval"))
     eval_cmd.set_defaults(func=_eval)
+    rescore_cmd = sub.add_parser(
+        "rescore", help="Re-run the code checks over a stored trials.jsonl; no model call."
+    )
+    rescore_cmd.add_argument("trials", type=Path)
+    rescore_cmd.add_argument(
+        "--strict-grounding",
+        action="store_true",
+        help="Score kg_grounded as it was before differences were allowed.",
+    )
+    rescore_cmd.set_defaults(func=_rescore)
     return parser
 
 

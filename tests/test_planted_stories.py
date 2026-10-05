@@ -25,14 +25,15 @@ def built():
 
 def test_case_list_matches_the_spec() -> None:
     names = [c.name for c in CASES]
-    assert len(names) == 15 and len(set(names)) == 15
-    singles = [
-        s for s in Story if s not in (Story.COMBINED, Story.NEGATIVE_QUIET, Story.NEGATIVE_DELOAD)
-    ]
-    for story in singles:
-        assert sum(1 for c in CASES if c.story is story) == 2
-    for story in (Story.COMBINED, Story.NEGATIVE_QUIET, Story.NEGATIVE_DELOAD):
-        assert sum(1 for c in CASES if c.story is story) == 1
+    assert len(names) == 16 and len(set(names)) == 16
+    one_seed = (
+        Story.COMBINED,
+        Story.NEGATIVE_QUIET,
+        Story.NEGATIVE_DELOAD,
+        Story.NEGATIVE_TWO_WEEK_HOLD,
+    )
+    for story in Story:
+        assert sum(1 for c in CASES if c.story is story) == (1 if story in one_seed else 2)
 
 
 def test_every_case_passes_through_the_raw_models(built) -> None:
@@ -151,3 +152,13 @@ def test_accessories_do_not_wobble_week_to_week(built) -> None:
         history = exercise_history(data.workouts, accessory, weeks=8, ending=data.review_week)
         tops = [e.top_set_kg for e in history.weeks]
         assert tops == sorted(tops), accessory  # monotonic, like the main lifts
+
+
+def test_negative_two_week_hold_is_a_hold_not_a_stall(built) -> None:
+    data = built["negative_two_week_hold-1"]
+    history = exercise_history(data.workouts, BENCH, weeks=4, ending=data.review_week)
+    tops = [e.top_set_kg for e in history.weeks]
+    assert tops[-1] == tops[-2] and tops[-2] > tops[-3]  # held for two weeks after a rise
+    assert history.e1rm_change_kg > 0
+    figures = week_figures(data.workouts, data.review_week)
+    assert figures.sessions == 3 and figures.sessions_missed == pytest.approx(0.0)

@@ -253,3 +253,8 @@ def test_user_turn_carries_figures_and_week_but_never_notes() -> None:
 def test_system_prompt_states_the_rules() -> None:
     for phrase in ("exercise_history", "three suggestions", "Overall", "RPE", "ten reps", "kg"):
         assert phrase in SYSTEM_PROMPT, phrase
+
+
+def test_system_prompt_defines_stalled() -> None:
+    assert "stalled" in SYSTEM_PROMPT.lower()
+    assert "four or more" in SYSTEM_PROMPT

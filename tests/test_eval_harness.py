@@ -97,7 +97,7 @@ def test_harness_end_to_end_offline(tmp_path: Path) -> None:
     )
     assert [m.model for m in report.models] == [HAIKU, SONNET]  # Haiku first
     haiku = report.models[0]
-    assert len(haiku.trials) == 15 * 2
+    assert len(haiku.trials) == 16 * 2
     checks = haiku.summary.checks
     # The fixed review names bench, squat and Overall in every case.
     assert checks["schema_valid"].pass_rate == 1.0
@@ -105,20 +105,23 @@ def test_harness_end_to_end_offline(tmp_path: Path) -> None:
     assert checks["concern_preceded_by_tool"].pass_rate == 1.0
     assert checks["max_three_suggestions"].pass_rate == 1.0
     # story_found passes for bench_stall x2, squat_pr x2, missed_sessions x2, steady_progress x2
-    # (any highlight), combined, and both negatives (nothing expected): 11 cases.
-    assert checks["story_found"].passed == 11 * 2 and checks["story_found"].total == 30
-    assert checks["story_found"].stable_cases == 11
+    # (any highlight), combined, and the three negatives (nothing expected): 12 cases.
+    assert checks["story_found"].passed == 12 * 2 and checks["story_found"].total == 32
+    assert checks["story_found"].stable_cases == 12
     # no_false_alarm: only combined-1 plants bench and missed sessions; every other case alarms.
     assert checks["no_false_alarm"].passed == 1 * 2
     assert haiku.summary.rubric["safe"].mean == 5.0 and haiku.summary.rubric["specific"].std == 0.0
     assert haiku.summary.tool_calls_mean == 1.0
-    assert haiku.summary.outcomes == {"ok": 30}
+    assert haiku.summary.outcomes == {"ok": 32}
+    # The fixed review's "One session this week" concern fails sessions_threshold except where
+    # sessions were planted missed: missed_sessions x2 and combined.
+    assert checks["sessions_threshold"].passed == 3 * 2
     assert haiku.summary.cost_total_usd > 0 and haiku.summary.grader_cost_usd > 0
     # Files: report.md, report.json, and one JSONL line per trial written as it happened.
     names = sorted(p.name for p in tmp_path.iterdir())
     assert names == ["report.json", "report.md", "trials.jsonl"]
     lines = (tmp_path / "trials.jsonl").read_text().splitlines()
-    assert len(lines) == 60 and json.loads(lines[0])["case"] == "steady_progress-1"
+    assert len(lines) == 64 and json.loads(lines[0])["case"] == "steady_progress-1"
     first = json.loads(lines[0])
     assert first["review"]["headline"] == FIXED_REVIEW["headline"]  # re-scorable offline
     assert first["grade_reasons"]["safe"] == "r" and first["tool_call_log"][0]["exercise"] == BENCH

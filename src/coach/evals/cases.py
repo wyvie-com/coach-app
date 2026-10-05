@@ -53,6 +53,7 @@ class Story(StrEnum):
     COMBINED = "combined"
     NEGATIVE_QUIET = "negative_quiet"
     NEGATIVE_DELOAD = "negative_deload"
+    NEGATIVE_TWO_WEEK_HOLD = "negative_two_week_hold"
 
 
 @dataclass(frozen=True)
@@ -100,17 +101,21 @@ _EXPECTED: dict[Story, tuple[Expectation, ...]] = {
     ),
     Story.NEGATIVE_QUIET: (),
     Story.NEGATIVE_DELOAD: (),
+    # Added from a real failure (docs/findings.md, 2026-10-05): a two-week hold was called a stall.
+    Story.NEGATIVE_TWO_WEEK_HOLD: (),
 }
 
 
 def _cases() -> list[Case]:
     cases = []
     for story in Story:
-        seeds = (
-            (1,)
-            if story in (Story.COMBINED, Story.NEGATIVE_QUIET, Story.NEGATIVE_DELOAD)
-            else (1, 2)
+        one_seed = (
+            Story.COMBINED,
+            Story.NEGATIVE_QUIET,
+            Story.NEGATIVE_DELOAD,
+            Story.NEGATIVE_TWO_WEEK_HOLD,
         )
+        seeds = (1,) if story in one_seed else (1, 2)
         for n in seeds:
             cases.append(
                 Case(
@@ -150,6 +155,10 @@ def _load_and_rpe(
         rpe = ((6.5, 7.0, 7.5), (7.5, 8.0, 8.5), (8.5, 9.0, 9.5), (9.0, 9.5, 10.0))[week - 9]
     if story is Story.DEADLIFT_REGRESSION and template_id == DEADLIFT[1] and week >= 9:
         load = _half_kg(_steady(base, 9) * (1 - 0.025 * (week - 9)))
+    if story is Story.NEGATIVE_TWO_WEEK_HOLD:
+        # Shift the fortnightly steps by one week so every lift's review-week top set repeats
+        # the previous week's after a rise: a two-week hold, which is normal programming.
+        load = _steady(base, week + 1)
     if story is Story.NEGATIVE_DELOAD and week == WEEKS - 1:
         load = _half_kg(load * 0.85)
         rpe = (6.0, 6.5, 7.0)

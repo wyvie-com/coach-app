@@ -58,6 +58,7 @@ def test_check_names_match_the_spec() -> None:
         "kg_grounded",
         "concern_preceded_by_tool",
         "max_three_suggestions",
+        "sessions_threshold",
     )
 
 
@@ -258,6 +259,95 @@ def test_concern_needs_a_successful_tool_call_for_that_exercise(stall) -> None:
     assert (
         _by_name(run_checks(data.case, figures, _run(overall_only, []), data.workouts))[
             "concern_preceded_by_tool"
+        ].passed
+        is True
+    )
+
+
+def test_kg_grounded_accepts_a_difference_of_two_grounded_figures_for_the_same_exercise(
+    stall,
+) -> None:
+    data, figures = stall
+    # Bench rose 70 -> 72.5 -> 75 kg over the tool window: "2.5 kg" is derived, not invented.
+    review = Review(
+        headline="Bench moved up 2.5 kg a fortnight before it stalled.",
+        highlights=[],
+        concerns=[Finding(exercise=BENCH, text="Flat for five weeks.")],
+        suggestions=[],
+    )
+    run = _run(review, [_call(BENCH, 12)])
+    assert (
+        _by_name(run_checks(data.case, figures, run, data.workouts))["kg_grounded"].passed is True
+    )
+    strict = run_checks(data.case, figures, run, data.workouts, allow_differences=False)
+    assert _by_name(strict)["kg_grounded"].passed is False
+
+
+def test_kg_grounded_difference_must_be_within_one_exercise(stall) -> None:
+    data, figures = stall
+    bench = next(e for e in figures.exercises if e.exercise == BENCH).top_set.weight_kg
+    squat = next(e for e in figures.exercises if e.exercise == SQUAT).top_set.weight_kg
+    cross = abs(squat - bench)
+    review = Review(
+        headline=f"The gap between squat and bench is {cross} kg.",
+        highlights=[],
+        concerns=[Finding(exercise=BENCH, text="Flat.")],
+        suggestions=[],
+    )
+    results = _by_name(run_checks(data.case, figures, _run(review, [_call(BENCH)]), data.workouts))
+    assert results["kg_grounded"].passed is False
+
+
+def test_data_checks_for_a_real_week_have_no_story_checks(stall) -> None:
+    from coach.evals.checks import DATA_CHECK_NAMES, run_data_checks
+
+    data, figures = stall
+    review = Review(
+        headline="h",
+        highlights=[],
+        concerns=[Finding(exercise=BENCH, text="Flat.")],
+        suggestions=[],
+    )
+    results = run_data_checks(figures, _run(review, [_call(BENCH)]), data.workouts)
+    assert [r.name for r in results] == list(DATA_CHECK_NAMES)
+    assert "story_found" not in DATA_CHECK_NAMES and "no_false_alarm" not in DATA_CHECK_NAMES
+    assert all(r.passed for r in results)
+
+
+def test_sessions_threshold_blocks_a_concern_under_one_missed_session(stall) -> None:
+    data, figures = stall  # bench_stall has three sessions against a baseline of three
+    assert figures.sessions_missed == pytest.approx(0.0)
+    review = Review(
+        headline="h",
+        highlights=[],
+        concerns=[Finding(exercise="Overall", text="You missed 0.25 of a session this week.")],
+        suggestions=[],
+    )
+    results = _by_name(run_checks(data.case, figures, _run(review, []), data.workouts))
+    assert results["sessions_threshold"].passed is False
+    other = Review(
+        headline="h",
+        highlights=[],
+        concerns=[Finding(exercise="Overall", text="Volume fell.")],
+        suggestions=[],
+    )
+    assert (
+        _by_name(run_checks(data.case, figures, _run(other, []), data.workouts))[
+            "sessions_threshold"
+        ].passed
+        is True
+    )
+    missed = build_case(_case("missed_sessions-1"))
+    missed_figures = week_figures(missed.workouts, missed.review_week)
+    ok = Review(
+        headline="h",
+        highlights=[],
+        concerns=[Finding(exercise="Overall", text="Only one session.")],
+        suggestions=[],
+    )
+    assert (
+        _by_name(run_checks(missed.case, missed_figures, _run(ok, []), missed.workouts))[
+            "sessions_threshold"
         ].passed
         is True
     )

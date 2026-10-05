@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from coach.evals.checks import CheckResult
 from coach.figures import WeekFigures
 from coach.review.loop import ReviewRun
 
 
-def render_markdown(figures: WeekFigures, run: ReviewRun) -> str:
-    """A readable version of the review, with the run's outcome and cost at the end."""
+def render_markdown(
+    figures: WeekFigures, run: ReviewRun, checks: list[CheckResult] | None = None
+) -> str:
+    """A readable version of the review, with the run's outcome, checks and cost at the end."""
     lines = [f"# Review, ISO week {figures.week}", ""]
     if run.review is None:
         lines += [f"No review: outcome `{run.outcome}`.", ""]
@@ -41,11 +44,19 @@ def render_markdown(figures: WeekFigures, run: ReviewRun) -> str:
         f"output ${run.cost.output_usd:.5f})",
         f"- seconds: {run.seconds:.1f}",
     ]
+    if checks is not None:
+        lines += ["", "## Checks"]
+        lines += [f"- {c.name}: {'pass' if c.passed else 'FAIL'} ({c.detail})" for c in checks]
     return "\n".join(lines) + "\n"
 
 
-def write_run(out_root: Path, figures: WeekFigures, run: ReviewRun) -> Path:
-    """Write figures, review, run record, cost and markdown. Returns the directory."""
+def write_run(
+    out_root: Path,
+    figures: WeekFigures,
+    run: ReviewRun,
+    checks: list[CheckResult] | None = None,
+) -> Path:
+    """Write figures, review, run record, cost, checks and markdown. Returns the directory."""
     directory = out_root / figures.week
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "figures.json").write_text(figures.model_dump_json(indent=2) + "\n")
@@ -53,5 +64,9 @@ def write_run(out_root: Path, figures: WeekFigures, run: ReviewRun) -> Path:
     (directory / "review.json").write_text(json.dumps(review, indent=2) + "\n")
     (directory / "run.json").write_text(run.model_dump_json(indent=2, exclude={"review"}) + "\n")
     (directory / "cost.json").write_text(run.cost.model_dump_json(indent=2) + "\n")
-    (directory / "review.md").write_text(render_markdown(figures, run))
+    if checks is not None:
+        (directory / "checks.json").write_text(
+            json.dumps([c.model_dump(mode="json") for c in checks], indent=2) + "\n"
+        )
+    (directory / "review.md").write_text(render_markdown(figures, run, checks))
     return directory
