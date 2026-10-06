@@ -38,6 +38,14 @@ Decision: stop here rather than chase the comparisons residual with more prompt.
 
 Week 2026-W40 reviewed a second time on Haiku, after a fresh pull (612 workouts). Aggregates only: outcome ok, 7 turns, 6 tool calls (every exercise it put in concerns plus the two it praised), all 7 data checks passed including the new `comparisons_grounded`, $0.032 against $0.026 on 2026-10-05. It raised four concerns where the first review raised two and Opus three; every one of the four is a stall of four or more unchanged weeks or a four-week e1RM fall, which is what rule 2 now asks for. Real weeks have more exercises than the synthetic ones (twelve against six), so the model looks up more and the review costs more; the synthetic suite's one tool call per review does not transfer.
 
+## Pass 2, after the plan: the code writes the summary
+
+Asked whether 96% could be 100%, and whether the comparisons weakness could go too. Both misses and the weakness were the same thing: a figure the model had and rewrote into a kinder or grander sentence. So the code now writes the sentences. `summary.flags` lists the concerns the rules decide (a stall of four or more weeks, a four-week e1RM fall of 5% or more outside a deload, sessions missed of 1.0 or more), `summary.week_line` is the whole-week sentence, `summary.leader_line` the ranking; rules 12 and 13 say to copy them. Three checks measure it: `flags_in_concerns`, `pct_grounded` (a percentage must belong to the exercise it is quoted for, which the kilogram check could not say), `deload_grounded`.
+
+Rescored offline over the fourth full run before any live call: flags carried 46 of 48 (the same two misses), percentages grounded 43 of 48, deload claims 47 of 48. Those are the baselines. The drop threshold of 5% is my own figure, recorded as such in the code.
+
+Full batched run submitted 2026-10-06; results follow in the next commit.
+
 ## Spend
 
 | Run | Trials | Cost |

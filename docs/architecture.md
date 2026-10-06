@@ -13,7 +13,8 @@ Hevy API ──pull──▶ private/hevy/<date>/*.json      raw pages, verbatim
                         │
                    figures.py                        every number: volume and its one-week change, top set,
                         │                            unchanged weeks, e1RM (≤10 reps), rep PR,
-                        │                            sessions baseline, 1 to 12 week history
+                        │                            sessions baseline, 1 to 12 week history; and the
+                        │                            summary: flags, week line, leader line
                         ▼
    ┌─────────── review/loop.py ───────────┐
    │ system prompt (cached) + tool (strict) │◀──── exercise_history(exercise, weeks) answered from figures.py
