@@ -1,4 +1,4 @@
-"""The whole harness offline: a fixed scripted client, fifteen cases, predictable pass pattern."""
+"""The whole harness offline: a fixed scripted client, sixteen cases, predictable pass pattern."""
 
 from __future__ import annotations
 

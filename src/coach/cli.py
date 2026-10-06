@@ -202,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_cmd.add_argument("--trials", type=int, default=3)
     eval_cmd.add_argument("--grader-model", default=settings.DEFAULT_MODEL)
-    eval_cmd.add_argument("--cases", help="Comma-separated case names; default all fifteen")
+    eval_cmd.add_argument("--cases", help="Comma-separated case names; default all sixteen")
     eval_cmd.add_argument("--out", type=Path, default=Path("out/eval"))
     eval_cmd.add_argument(
         "--budget-usd",
