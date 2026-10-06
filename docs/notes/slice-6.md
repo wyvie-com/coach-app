@@ -39,6 +39,8 @@ Four cases (steady progress, bench stall, missed sessions, quiet week), one tria
 
 The review cost is not exactly half because tool calls per review differed (1.1 live, 1.5 here, on different cases). Each batch of four requests took two to five minutes to end; the API's "most within an hour" is the figure to plan around, not these.
 
+The full suite followed (findings entry 11): 48 trials, six batches (48, 47, 11, 7 and 1 review requests, then 48 grades), 34 minutes, $0.64 against $1.84 for the last live full run. The five review rounds are the tool-loop depth of the suite: one review needed five requests, most needed two.
+
 ## Interviewer questions
 
 1. Why rounds of batches rather than one batch per review? Because a review's second request depends on its first response. The round structure is the dependency graph of a tool loop: every review's step N goes in batch N. Wall time is the number of rounds times the batch latency, which for this suite is minutes.

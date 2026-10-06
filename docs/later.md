@@ -15,4 +15,5 @@ Things named during the build that are larger than this side project needs now. 
 - Offline re-grading: grade stored reviews from a `trials.jsonl` with a different grader model without regenerating the reviews, so grader comparisons are on identical reviews.
 
 - **Fewer fields in the figures.** After `leaders` and `counts` (findings entry 10) each exercise carries two percentage changes and the grader's remaining criticisms are percentages moved between them. A trimmed figures block for the model, with the full one kept for the files, is the next experiment: remove `volume_prior_week_kg` and `e1rm_change_4w_kg` (keep the percentages) and measure `follows_from_data` at three trials per case.
+- **The "across the board" flourish.** Ten of 48 trials in the fourth run said it of five lifts in six, with the counts in front of the model and a rule against it. Two measurements before any more prompt: the same suite with Sonnet 5.5 as the reviewer (about $1.20 batched) to see whether it is a Haiku habit, and the shorter figures block above.
 

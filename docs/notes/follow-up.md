@@ -28,6 +28,12 @@ Decisions:
 
 `docs/notes/slice-6.md`. The loop became a resumable session so the batch path and the live path share one body; the suite runs as rounds of batches at half price. Verified live on four cases: 4 of 4 ok, $0.05, 16 minutes.
 
+## Step 5: the full run on the final prompt
+
+`docs/findings.md` entry 11. 16 cases, 3 trials, batched: story found 96%, no false alarm 100%, every other original check 98 to 100%, the new comparisons check 71%. $0.64 and 34 minutes, six batches, every request succeeded.
+
+Decision: stop here rather than chase the comparisons residual with more prompt. Two candidates are recorded for later, a shorter figures block and a Sonnet-reviewed run of the suite, each a measurement with a price.
+
 ## Step 6: the last complete real week again, on the final prompt
 
 Week 2026-W40 reviewed a second time on Haiku, after a fresh pull (612 workouts). Aggregates only: outcome ok, 7 turns, 6 tool calls (every exercise it put in concerns plus the two it praised), all 7 data checks passed including the new `comparisons_grounded`, $0.032 against $0.026 on 2026-10-05. It raised four concerns where the first review raised two and Opus three; every one of the four is a stall of four or more unchanged weeks or a four-week e1RM fall, which is what rule 2 now asks for. Real weeks have more exercises than the synthetic ones (twelve against six), so the model looks up more and the review costs more; the synthetic suite's one tool call per review does not transfer.
@@ -41,7 +47,8 @@ Week 2026-W40 reviewed a second time on Haiku, after a fresh pull (612 workouts)
 | step 3, pass 2: 16 cases, Sonnet grader | 16 | $0.39 |
 | step 3, pass 2 re-run of five cases | 5 | $0.12 |
 | step 4: four cases through batches | 4 | $0.05 |
+| step 5: full run, 16 cases x 3 trials, batched | 48 | $0.64 |
 | step 6: real week 2026-W40 on the final prompt | 1 | $0.03 |
-| **total since v0.1.0** | | **$1.33** |
+| **total since v0.1.0** | | **$2.00** |
 
-Project total: $8.93 (slice 5 note) plus the table above.
+Project total: $8.93 (slice 5 note) plus $2.00 above, $10.93. The plan's estimate was $2.87 before buffer; the batched full run and the cheaper Sonnet-graded passes brought it in under.
