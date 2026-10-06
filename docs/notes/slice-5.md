@@ -1,6 +1,6 @@
 # Slice 5: live runs and write-ups
 
-Date: 2026-10-05. Branch `claude/funny-cori-evrx1v`. Tag `v0.1.0`.
+Date: 2026-10-05. Branch `claude/funny-cori-evrx1v`. Commit `01a6351`, labelled v0.1.0.
 
 ## What was built
 
