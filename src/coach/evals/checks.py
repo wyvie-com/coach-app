@@ -258,7 +258,7 @@ def _pct_values(payload: Any) -> set[float]:
             for item in node:
                 walk(item, key)
         elif isinstance(node, int | float) and not isinstance(node, bool) and key and "pct" in key:
-            found.add(float(node))
+            found.add(abs(float(node)))  # the sign is carried by words: "down 7.5%"
 
     walk(payload, None)
     return found
@@ -297,7 +297,7 @@ def _pct_check(
     for exercise, text in findings:
         allowed = everything if exercise == "Overall" else per_exercise.get(exercise, set())
         for match in _PCT.finditer(text):
-            quoted = float(match.group(1))
+            quoted = abs(float(match.group(1)))
             if not any(abs(quoted - v) <= PCT_TOLERANCE for v in allowed):
                 where = "any exercise" if exercise == "Overall" else exercise
                 bad.append(f"{quoted:g}% not a figure of {where}")

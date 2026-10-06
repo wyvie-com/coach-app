@@ -461,6 +461,15 @@ def test_pct_grounded_ties_a_percentage_to_its_exercise(stall) -> None:
     assert not result.passed and "42%" in result.detail
 
 
+def test_pct_grounded_reads_a_fall_written_as_a_positive_number() -> None:
+    data = build_case(_case("deadlift_regression-1"))
+    figures = week_figures(data.workouts, data.review_week)
+    assert next(e for e in figures.exercises if e.exercise == DEADLIFT).e1rm_change_4w_pct == -7.5
+    down = _review_with(Finding(exercise=DEADLIFT, text="e1RM down 7.5% over four weeks."))
+    result = _by_name(run_checks(data.case, figures, _run(down, []), data.workouts))
+    assert result["pct_grounded"].passed
+
+
 def test_pct_grounded_accepts_a_tool_result_percentage(stall) -> None:
     from coach.figures import exercise_history
 

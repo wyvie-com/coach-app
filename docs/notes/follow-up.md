@@ -44,7 +44,11 @@ Asked whether 96% could be 100%, and whether the comparisons weakness could go t
 
 Rescored offline over the fourth full run before any live call: flags carried 46 of 48 (the same two misses), percentages grounded 43 of 48, deload claims 47 of 48. Those are the baselines. The drop threshold of 5% is my own figure, recorded as such in the code.
 
-Full batched run submitted 2026-10-06; results follow in the next commit.
+Fifth full run, batched (`docs/findings.md` entry 12): story found 100%, no false alarm 100%, flags carried 100%, percentages 100% after a sign fix in the check, deload 100%, comparisons 79%. $0.66, 37 minutes. Every original check is at 100% for the first time; the flourish is the one error type left.
+
+Real week 2026-W40 on this prompt: four flags (three stalls, one four-week fall), all carried into concerns; all ten data checks passed; 5 turns, 4 tool calls, $0.022.
+
+Decision: stop here. The remaining failure is a wording habit the grader scores as such, and the three ways forward are each a priced measurement listed in the findings, not a code change this pass should make.
 
 ## Spend
 
@@ -57,6 +61,9 @@ Full batched run submitted 2026-10-06; results follow in the next commit.
 | step 4: four cases through batches | 4 | $0.05 |
 | step 5: full run, 16 cases x 3 trials, batched | 48 | $0.64 |
 | step 6: real week 2026-W40 on the final prompt | 1 | $0.03 |
-| **total since v0.1.0** | | **$2.00** |
+| pass 2: live sanity check, two cases | 2 | $0.05 |
+| pass 2: fifth full run, batched | 48 | $0.66 |
+| pass 2: real week 2026-W40 again | 1 | $0.02 |
+| **total since v0.1.0** | | **$2.73** |
 
-Project total: $8.93 (slice 5 note) plus $2.00 above, $10.93. The plan's estimate was $2.87 before buffer; the batched full run and the cheaper Sonnet-graded passes brought it in under.
+Project total: $8.93 (slice 5 note) plus $2.73 above, $11.66. The six-step plan's estimate was $2.87 before buffer and came in at $2.00; pass 2 was quoted at $0.85 and came in at $0.73.
