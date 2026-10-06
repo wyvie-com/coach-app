@@ -31,6 +31,9 @@ CHECK_NAMES = (
     "max_three_suggestions",
     "sessions_threshold",
     "comparisons_grounded",
+    "flags_in_concerns",
+    "pct_grounded",
+    "deload_grounded",
 )
 #: The checks that need no planted story, so they also run on a real week's review.
 DATA_CHECK_NAMES = (
@@ -41,10 +44,16 @@ DATA_CHECK_NAMES = (
     "max_three_suggestions",
     "sessions_threshold",
     "comparisons_grounded",
+    "flags_in_concerns",
+    "pct_grounded",
+    "deload_grounded",
 )
 KG_TOLERANCE = 0.5
 _KG = re.compile(r"(\d+(?:\.\d+)?)\s*(?:kg|kilograms?)\b", re.IGNORECASE)
 _SESSIONS = re.compile(r"\bsessions?\b", re.IGNORECASE)
+_PCT = re.compile(r"(-?\d+(?:\.\d+)?)\s*(?:%|percent\b|pct\b)", re.IGNORECASE)
+PCT_TOLERANCE = 0.05
+_DELOAD = re.compile(r"\bdeload", re.IGNORECASE)
 #: Words that rank one exercise against the others. "highest" and "best" are left out because
 #: they usually compare one exercise with its own history, which this check cannot judge.
 _SUPERLATIVE = re.compile(
@@ -213,7 +222,110 @@ def _data_checks(
         )
     )
     results.append(_comparisons_check(review, figures))
+    results.append(_flags_check(review, figures))
+    results.append(_pct_check(review, figures, run, workouts))
+    results.append(_deload_check(review, figures))
     return results
+
+
+def _flags_check(review: Review, figures: WeekFigures) -> CheckResult:
+    """Every flag the code raised must appear in concerns under its exercise.
+
+    Added after the fourth full run (docs/findings.md entry 11), where the two planted stories
+    the model missed were both figures it had been given and chose to read kindly: a one-session
+    week called a deload, a five-week stall called "held steady". The flags take that choice away.
+    """
+    named = {f.exercise for f in review.concerns}
+    missing = [flag.text for flag in figures.summary.flags if flag.exercise not in named]
+    return CheckResult(
+        name="flags_in_concerns",
+        passed=not missing,
+        detail=f"{len(figures.summary.flags)} flags, all in concerns"
+        if not missing
+        else "flags not in concerns: " + "; ".join(missing),
+    )
+
+
+def _pct_values(payload: Any) -> set[float]:
+    """Every number under a key that names a percentage, anywhere in a JSON-like structure."""
+    found: set[float] = set()
+
+    def walk(node: Any, key: str | None) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, k)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, key)
+        elif isinstance(node, int | float) and not isinstance(node, bool) and key and "pct" in key:
+            found.add(float(node))
+
+    walk(payload, None)
+    return found
+
+
+def _pct_check(
+    review: Review, figures: WeekFigures, run: ReviewRun, workouts: Sequence[Workout]
+) -> CheckResult:
+    """A percentage in a finding about one exercise must be that exercise's own figure.
+
+    From the figures or from a tool result for it; "Overall" findings and the headline may
+    quote any exercise's.
+
+    The kilogram check is global because loads repeat across lifts; percentages do not, and the
+    Sonnet grader found them moved between lifts three times (docs/findings.md entry 10).
+    """
+    per_exercise: dict[str, set[float]] = {
+        e.exercise: _pct_values(e.model_dump(mode="json")) for e in figures.exercises
+    }
+    ending = WeekId.parse(figures.week)
+    for call in run.tool_calls:
+        if call.is_error or call.weeks is None:
+            continue
+        try:
+            history = exercise_history(workouts, call.exercise, weeks=call.weeks, ending=ending)
+        except (UnknownExerciseError, ValueError):
+            continue
+        per_exercise.setdefault(history.exercise, set()).update(
+            _pct_values(history.model_dump(mode="json"))
+        )
+    everything = set().union(*per_exercise.values()) if per_exercise else set()
+    bad: list[str] = []
+    findings = [("Overall", review.headline)] + [
+        (f.exercise, f.text) for f in review.highlights + review.concerns
+    ]
+    for exercise, text in findings:
+        allowed = everything if exercise == "Overall" else per_exercise.get(exercise, set())
+        for match in _PCT.finditer(text):
+            quoted = float(match.group(1))
+            if not any(abs(quoted - v) <= PCT_TOLERANCE for v in allowed):
+                where = "any exercise" if exercise == "Overall" else exercise
+                bad.append(f"{quoted:g}% not a figure of {where}")
+    return CheckResult(
+        name="pct_grounded",
+        passed=not bad,
+        detail="every percentage belongs to the exercise it is quoted for"
+        if not bad
+        else "; ".join(bad),
+    )
+
+
+def _deload_check(review: Review, figures: WeekFigures) -> CheckResult:
+    """The week may be called a deload only when a session title says so (rule 8, summary.deload).
+
+    Suggestions are not checked: "consider a deload" is advice, not a claim about the week.
+    Rescoring the fourth full run showed 7 of 8 mentions were exactly that.
+    """
+    texts = [review.headline] + [f.text for f in review.highlights + review.concerns]
+    said = any(_DELOAD.search(t) for t in texts)
+    unfounded = said and not figures.summary.deload
+    return CheckResult(
+        name="deload_grounded",
+        passed=not unfounded,
+        detail="deload called with no Deload session title"
+        if unfounded
+        else ("deload week, titled" if figures.summary.deload else "no deload claim"),
+    )
 
 
 def _comparisons_check(review: Review, figures: WeekFigures) -> CheckResult:

@@ -30,6 +30,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from statistics import mean
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -111,6 +112,39 @@ class Counts(_Frozen):
     volume_down_1w: int
 
 
+#: A top set unchanged for this many consecutive weeks is a stall (prompt rule 2).
+STALL_WEEKS = 4
+#: A four-week e1RM fall of this much or more is a regression flag. My reasoning, not a
+#: documented threshold: the synthetic regression plants about -7.5%, week-to-week noise on
+#: the real log sits within +-3%, and a planned deload is excluded by title before this applies.
+DROP_PCT = -5.0
+#: Prompt rule 9: sessions missed at or above this is a concern.
+MISSED_SESSIONS = 1.0
+
+
+class Flag(_Frozen):
+    """One concern the code has already decided on. The review must carry it; it may add more."""
+
+    exercise: str
+    kind: Literal["stall", "e1rm_drop_4w", "sessions_missed"]
+    value: float
+    text: str
+
+
+class Summary(_Frozen):
+    """The week in code-written sentences, so the model copies claims instead of composing them.
+
+    Added after the fourth full run (docs/findings.md entry 11): with every number in front of
+    it the model still wrote "across the board" over five lifts in six and ranked the second
+    lift first. A sentence is copied more reliably than six rows are compared.
+    """
+
+    deload: bool
+    flags: list[Flag]
+    week_line: str
+    leader_line: str | None
+
+
 class WeekFigures(_Frozen):
     """Everything the review is given about one week."""
 
@@ -123,6 +157,7 @@ class WeekFigures(_Frozen):
     exercises: list[ExerciseFigures]
     leaders: Leaders
     counts: Counts
+    summary: Summary
     warnings: list[str]
 
 
@@ -288,6 +323,21 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
 
     baseline = _baseline(by_week, week)
     sessions = len(this_week)
+    missed = None if baseline is None else _round(max(0.0, baseline - sessions), 2)
+    leaders = Leaders(
+        e1rm_change_4w_pct=_leader(exercises, "e1rm_change_4w_pct"),
+        volume_change_1w_pct=_leader(exercises, "volume_change_1w_pct"),
+        volume_kg=_leader(exercises, "volume_kg"),
+    )
+    counts = Counts(
+        exercises=len(exercises),
+        e1rm_up_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v > 0),
+        e1rm_flat_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v == 0),
+        e1rm_down_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v < 0),
+        volume_up_1w=_count(exercises, "volume_change_1w_pct", lambda v: v > 0),
+        volume_down_1w=_count(exercises, "volume_change_1w_pct", lambda v: v < 0),
+    )
+    deload = any("deload" in w.title.casefold() for w in this_week)
     warnings = []
     if other_types:
         count = sum(other_types.values())
@@ -301,21 +351,16 @@ def week_figures(workouts: Sequence[Workout], week: WeekId) -> WeekFigures:
         zone=str(MELBOURNE.key),
         sessions=sessions,
         baseline_sessions=_round(baseline, 2),
-        sessions_missed=None if baseline is None else _round(max(0.0, baseline - sessions), 2),
+        sessions_missed=missed,
         session_titles=[w.title[:TITLE_LIMIT] for w in this_week],
         exercises=exercises,
-        leaders=Leaders(
-            e1rm_change_4w_pct=_leader(exercises, "e1rm_change_4w_pct"),
-            volume_change_1w_pct=_leader(exercises, "volume_change_1w_pct"),
-            volume_kg=_leader(exercises, "volume_kg"),
-        ),
-        counts=Counts(
-            exercises=len(exercises),
-            e1rm_up_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v > 0),
-            e1rm_flat_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v == 0),
-            e1rm_down_4w=_count(exercises, "e1rm_change_4w_kg", lambda v: v < 0),
-            volume_up_1w=_count(exercises, "volume_change_1w_pct", lambda v: v > 0),
-            volume_down_1w=_count(exercises, "volume_change_1w_pct", lambda v: v < 0),
+        leaders=leaders,
+        counts=counts,
+        summary=Summary(
+            deload=deload,
+            flags=_flags(exercises, missed, baseline, deload),
+            week_line=_week_line(sessions, baseline, counts, deload),
+            leader_line=_leader_line(exercises, leaders),
         ),
         warnings=warnings,
     )
@@ -339,6 +384,85 @@ def _unchanged_weeks(tops: Sequence[Set | None]) -> int | None:
             break
         unchanged += 1
     return unchanged
+
+
+def _flags(
+    exercises: Sequence[ExerciseFigures], missed: float | None, baseline: float | None, deload: bool
+) -> list[Flag]:
+    """The concerns the rules decide without judgement: stalls, four-week drops, missed sessions."""
+    flags: list[Flag] = []
+    for e in exercises:
+        weeks = e.top_set_unchanged_weeks
+        if weeks is not None and weeks >= STALL_WEEKS and e.top_set is not None:
+            flags.append(
+                Flag(
+                    exercise=e.exercise,
+                    kind="stall",
+                    value=weeks,
+                    text=(
+                        f"{e.exercise}: top set unchanged at {e.top_set.weight_kg:g} kg x "
+                        f"{e.top_set.reps} for {weeks} consecutive weeks"
+                    ),
+                )
+            )
+        pct = e.e1rm_change_4w_pct
+        if pct is not None and pct <= DROP_PCT and not deload:
+            flags.append(
+                Flag(
+                    exercise=e.exercise,
+                    kind="e1rm_drop_4w",
+                    value=pct,
+                    text=f"{e.exercise}: e1RM down {abs(pct):.1f}% over four weeks",
+                )
+            )
+    if missed is not None and missed >= MISSED_SESSIONS and baseline is not None:
+        flags.append(
+            Flag(
+                exercise="Overall",
+                kind="sessions_missed",
+                value=missed,
+                text=f"Overall: {missed:.1f} sessions missed against a baseline of {baseline:.1f}",
+            )
+        )
+    return flags
+
+
+def _week_line(sessions: int, baseline: float | None, counts: Counts, deload: bool) -> str:
+    """One sentence about the whole week, for the model to copy rather than compose."""
+    parts = [f"{sessions} session{'s' if sessions != 1 else ''}"]
+    if baseline is not None:
+        parts[0] += f" against a baseline of {baseline:.1f}"
+    if counts.exercises:
+        parts.append(
+            f"{counts.e1rm_up_4w} of {counts.exercises} exercises up on four-week e1RM, "
+            f"{counts.e1rm_flat_4w} flat, {counts.e1rm_down_4w} down"
+        )
+        parts.append(
+            f"{counts.volume_up_1w} of {counts.exercises} up on volume against last week, "
+            f"{counts.volume_down_1w} down"
+        )
+    line = "; ".join(parts) + "."
+    return ("Deload week (by session title): " + line) if deload else line
+
+
+def _leader_line(exercises: Sequence[ExerciseFigures], leaders: Leaders) -> str | None:
+    """Who leads on what, with the figure, or None when nothing has a clear leader."""
+    by_name = {e.exercise: e for e in exercises}
+    parts = []
+    if leaders.e1rm_change_4w_pct:
+        e = by_name[leaders.e1rm_change_4w_pct]
+        pct = e.e1rm_change_4w_pct or 0.0
+        verb = "leads on" if pct > 0 else "fell least on"
+        parts.append(f"{e.exercise} {verb} four-week e1RM change ({pct:+.1f}%)")
+    if leaders.volume_change_1w_pct:
+        e = by_name[leaders.volume_change_1w_pct]
+        pct = e.volume_change_1w_pct or 0.0
+        verb = "leads on" if pct > 0 else "fell least on"
+        parts.append(f"{e.exercise} {verb} volume change against last week ({pct:+.1f}%)")
+    if leaders.volume_kg:
+        e = by_name[leaders.volume_kg]
+        parts.append(f"{e.exercise} has the most volume ({e.volume_kg:g} kg)")
+    return ("; ".join(parts) + ".") if parts else None
 
 
 def _leader(exercises: Sequence[ExerciseFigures], attr: str) -> str | None:
@@ -482,4 +606,10 @@ def format_table(figures: WeekFigures) -> str:
             f"{top:>14} {e1rm:>7} {rpe:>5} {change:>9} {pr:>7}"
         )
     lines += [f"warning: {w}" for w in figures.warnings]
+    lines.append("")
+    lines.append(figures.summary.week_line)
+    if figures.summary.leader_line:
+        lines.append(figures.summary.leader_line)
+    for flag in figures.summary.flags:
+        lines.append(f"flag  {flag.text}")
     return "\n".join(lines)

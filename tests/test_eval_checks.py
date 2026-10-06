@@ -60,6 +60,9 @@ def test_check_names_match_the_spec() -> None:
         "max_three_suggestions",
         "sessions_threshold",
         "comparisons_grounded",
+        "flags_in_concerns",
+        "pct_grounded",
+        "deload_grounded",
     )
 
 
@@ -409,3 +412,80 @@ def test_comparisons_grounded_lets_the_leader_say_it_led_all_exercises(stall) ->
     assert _by_name(run_checks(_case("bench_stall-1"), figures, _run(led, []), data.workouts))[
         "comparisons_grounded"
     ].passed
+
+
+def _checks(stall, review: Review, calls: list[ToolCall] | None = None):
+    data, figures = stall
+    return _by_name(
+        run_checks(_case("bench_stall-1"), figures, _run(review, calls or []), data.workouts)
+    )
+
+
+def test_flags_in_concerns_needs_every_flag(stall) -> None:
+    data, figures = stall
+    assert [f.kind for f in figures.summary.flags] == ["stall"]
+    carried = Review(
+        headline="h",
+        highlights=[],
+        concerns=[Finding(exercise=BENCH, text="Unchanged for five weeks.")],
+        suggestions=[],
+    )
+    dropped = Review(
+        headline="h",
+        highlights=[Finding(exercise=BENCH, text="Held steady at 80 kg.")],
+        concerns=[],
+        suggestions=[],
+    )
+    assert _checks(stall, carried)["flags_in_concerns"].passed
+    result = _checks(stall, dropped)["flags_in_concerns"]
+    assert not result.passed and "5 consecutive weeks" in result.detail
+
+
+def test_pct_grounded_ties_a_percentage_to_its_exercise(stall) -> None:
+    data, figures = stall
+    row = next(e for e in figures.exercises if e.exercise == "Dumbbell Row")
+    own = _review_with(
+        Finding(exercise="Dumbbell Row", text=f"Up {row.e1rm_change_4w_pct}% over four weeks.")
+    )
+    moved = _review_with(
+        Finding(exercise=SQUAT, text=f"Up {row.e1rm_change_4w_pct}% over four weeks.")
+    )
+    overall = _review_with(
+        Finding(exercise="Overall", text=f"Best gain {row.e1rm_change_4w_pct} percent.")
+    )
+    invented = _review_with(Finding(exercise="Dumbbell Row", text="Up 42.0% this month."))
+    assert _checks(stall, own)["pct_grounded"].passed
+    assert not _checks(stall, moved)["pct_grounded"].passed
+    assert _checks(stall, overall)["pct_grounded"].passed
+    result = _checks(stall, invented)["pct_grounded"]
+    assert not result.passed and "42%" in result.detail
+
+
+def test_pct_grounded_accepts_a_tool_result_percentage(stall) -> None:
+    from coach.figures import exercise_history
+
+    data, figures = stall
+    history = exercise_history(data.workouts, BENCH, weeks=8, ending=data.review_week)
+    assert history.e1rm_change_pct is not None
+    text = f"Up {history.e1rm_change_pct}% over eight weeks."
+    review = _review_with(Finding(exercise=BENCH, text=text))
+    assert _checks(stall, review, [_call(BENCH, 8)])["pct_grounded"].passed
+    assert not _checks(stall, review)["pct_grounded"].passed  # no tool call, not in the figures
+
+
+def test_deload_grounded_needs_a_deload_title(stall) -> None:
+    claimed = _review_with(Finding(exercise="Overall", text="A deload week, fewer sessions."))
+    result = _checks(stall, claimed)["deload_grounded"]
+    assert not result.passed and "no Deload session title" in result.detail
+    advised = Review(
+        headline="h",
+        highlights=[],
+        concerns=[],
+        suggestions=[Finding(exercise=BENCH, text="Consider a deload week to reset.")],
+    )
+    assert _checks(stall, advised)["deload_grounded"].passed  # advice, not a claim
+    deload = build_case(_case("negative_deload-1"))
+    figures = week_figures(deload.workouts, deload.review_week)
+    assert figures.summary.deload
+    ok = _by_name(run_checks(deload.case, figures, _run(claimed, []), deload.workouts))
+    assert ok["deload_grounded"].passed

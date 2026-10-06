@@ -264,7 +264,8 @@ def test_system_prompt_defines_stalled() -> None:
 
 def test_system_prompt_governs_comparisons_and_windows() -> None:
     assert "volume_change_1w_pct" in SYSTEM_PROMPT
-    assert "leaders" in SYSTEM_PROMPT and "counts" in SYSTEM_PROMPT
+    assert "summary.week_line" in SYSTEM_PROMPT and "summary.leader_line" in SYSTEM_PROMPT
+    assert "summary.flags" in SYSTEM_PROMPT and "summary.deload" in SYSTEM_PROMPT
     assert "four weeks" in SYSTEM_PROMPT and "eight weeks" in SYSTEM_PROMPT
 
 

@@ -330,3 +330,43 @@ def test_top_set_unchanged_weeks_skips_empty_weeks_and_is_none_without_data() ->
     assert history.top_set_unchanged_weeks == 2
     none = exercise_history(workouts, "Bench Press (Barbell)", weeks=1, ending=W40.shift(-1))
     assert none.top_set_unchanged_weeks is None
+
+
+def test_summary_flags_week_line_and_leader_line() -> None:
+    from coach.evals.cases import CASES, build_case
+
+    def figures_for(name: str):
+        data = build_case(next(c for c in CASES if c.name == name))
+        return week_figures(data.workouts, data.review_week)
+
+    combined = figures_for("combined-1").summary
+    assert [(f.exercise, f.kind, f.value) for f in combined.flags] == [
+        ("Bench Press (Barbell)", "stall", 5.0),
+        ("Overall", "sessions_missed", 2.0),
+    ]
+    assert combined.week_line.startswith("1 session against a baseline of 3.0; 2 of 3 exercises up")
+    assert combined.deload is False
+    regression = figures_for("deadlift_regression-1").summary
+    assert [(f.exercise, f.kind) for f in regression.flags] == [
+        ("Deadlift (Barbell)", "e1rm_drop_4w")
+    ]
+    assert regression.flags[0].value == -7.5 and "7.5%" in regression.flags[0].text
+    assert regression.leader_line is not None and regression.leader_line.startswith(
+        "Dumbbell Row leads on four-week e1RM change (+14.3%)"
+    )
+    deload = figures_for("negative_deload-1").summary
+    assert deload.deload and deload.flags == []  # every lift fell, none flagged in a deload week
+    assert deload.week_line.startswith("Deload week (by session title): 3 sessions")
+    assert "fell least on four-week e1RM change" in (deload.leader_line or "")
+    quiet = figures_for("negative_quiet-1").summary
+    assert quiet.flags == [] and "6 of 6 exercises up" in quiet.week_line
+
+
+def test_summary_with_no_exercises_or_baseline() -> None:
+    figures = week_figures([_workout(W40.shift(-1), 0, [_bench(80.0)])], W40)
+    # No exercises, so no leaders; the empty week against a baseline of one is itself a flag.
+    assert figures.summary.leader_line is None
+    assert [(f.exercise, f.kind, f.value) for f in figures.summary.flags] == [
+        ("Overall", "sessions_missed", 1.0)
+    ]
+    assert figures.summary.week_line == "0 sessions against a baseline of 1.0."
