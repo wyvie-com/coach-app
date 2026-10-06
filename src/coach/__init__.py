@@ -4,4 +4,4 @@ Code computes every figure, Claude only interprets them, and an evaluation
 suite judges the review. See docs/spec.md for the design.
 """
 
-__version__ = "0.0.1"
+__version__ = "0.2.0"
