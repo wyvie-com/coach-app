@@ -4,6 +4,8 @@ One entry per real failure: when, which model, what the review got wrong, what w
 
 Credit note: the Anthropic account's prepaid credit ran out on 2026-10-05 during the second full eval run (20 of 45 trials completed) and the hold re-run (5 of 9), at $5.00 of spend. After a $5 top-up the same day, a third full run (48 trials, $1.84), an Opus review of one real week ($0.11), a missed-sessions re-run ($0.17) and a Sonnet-graded run completed the measurements. The eval command now prints an estimate and takes a `--budget-usd` cap.
 
+**Check definitions changed on 2026-10-07 (entry 13).** Entries 1 to 12 report results under the definitions in force at the time and are kept as they were measured. `story_found` meant the expected exercise appeared in the expected section, with negative cases passing by default. `flags_in_concerns` meant the flagged exercise appeared in concerns. Neither read what the finding said, so "found" and "carried" in those entries mean placed. Current definitions are in `docs/checks.md`.
+
 ## 1. Grounding check too strict (eval, 2026-10-05)
 
 - **Model:** Haiku 4.5 and Sonnet 5.5.
@@ -84,11 +86,19 @@ Credit note: the Anthropic account's prepaid credit ran out on 2026-10-05 during
 
 ## 12. The code writes the summary; every planted story found (eval, 2026-10-06)
 
+- **Definitions:** "found" here is `story_found` as it stood that day: the expected exercise in the expected section, with the 9 negative-case trials passing by default. `flags_in_concerns` passed by default in the 21 trials without a flag. Entry 13 shows what those checks did not test.
 - **Model:** Haiku 4.5 reviews, Haiku 4.5 grader; 16 cases, 3 trials, batched. Fifth full run.
 - **What went wrong before:** entry 11's two misses and its 14 comparison failures were one habit: a figure the model had, rewritten into a kinder or grander sentence. A one-session week became "a deload", a five-week stall "held steady", five lifts in six "across the board".
 - **What changed:** the figures end with a `summary` the code writes: `flags`, the concerns the rules decide (a top set unchanged four or more weeks; a four-week e1RM fall of 5% or more, suppressed in a week titled Deload; sessions missed of 1.0 or more), each with its sentence; `week_line`, the whole week in one sentence with the counts; `leader_line`, who leads on what. Rule 13 says every flag appears in concerns; rule 12 says whole-week and ranking statements are copied from the two lines. Three checks: `flags_in_concerns`, `pct_grounded` (a percentage must be the quoted exercise's own, which the kilogram check could not say because loads repeat across lifts), `deload_grounded` (the word in the headline, a highlight or a concern needs a Deload title; suggestions to deload are advice and excluded). The 5% threshold is my own figure.
 - **Before and after:** `story_found` 96% to 100% (48 of 48, stable in all 16 cases); `no_false_alarm` 100% held; `kg_grounded` 98% to 100%; `flags_in_concerns` 96% (rescored on the fourth run) to 100%; `deload_grounded` 98% to 100%; `pct_grounded` 90% to 100% once the check read "down 7.5%" as the figure -7.5 (a sign bug in the check, found on this run and fixed before scoring); `comparisons_grounded` 71% to 79% (38 of 48). Every original check is at 100% for the first time. Rubric means unchanged within noise (`follows_from_data` 4.42). $0.66, 48 trials, six batches, 37 minutes.
 - **What remains:** the comparisons flourish, now 10 of 48: six "across the board" over five lifts in six, with the week_line saying "5 of 6" in front of the model, and four superlatives about the second-placed lift. Copying a sentence helped (14 to 10) but did not settle it. Three directions, each a measurement: Sonnet 5.5 as the reviewer on the same suite (about $1.20 batched) to learn whether the flourish is a Haiku habit; a figures block without the per-exercise percentages the model is tempted to rank; or accepting it, since the flourish is now the only error type left and the grader scores it as a wording fault, not a data one.
+
+## 13. A contradictory review passed every check (audit, 2026-10-07)
+
+- **Model:** none. The review was built by hand, not produced by a model, and no model was called. The rubric grader was not run on it, so nothing is claimed about what it would have said.
+- **What went wrong:** on the planted bench stall, a review that put the bench in concerns with the text "Bench is progressing normally and is not stalled." passed all twelve code checks. `story_found` matched the section and the exercise, and `flags_in_concerns` the exercise; neither read the words. Both also passed when there was nothing to test, so the latest run's 48 of 48 on each included 9 and 21 trials respectively with nothing to find.
+- **What changed:** `story_found` became `expected_placement`, n/a on negative cases. `flags_in_concerns` was replaced by `flags_carried` (a concern states the flagged condition) and `flags_consistent` (no highlight or concern says the opposite), both reading the prose through `coach.evals.flag_text` (`docs/checks.md`). Pass rates now leave out trials a check could not test, and the eval report has a row for negative cases. The review schema and prompt are unchanged, so the reviewer behaves as before.
+- **Before and after:** the hand-built review passed 12 of 12 checks before. After, it passes `expected_placement` and fails `flags_carried` and `flags_consistent`. 41 regression tests in `tests/test_eval_flag_checks.py` cover correct paraphrases, missing, contradictory, irrelevant, wrong-reason, wrong-direction and two-flag findings, negative cases, and two pinned limits. No model output has been scored with the new checks: the stored reviews have not been re-scored and no run has been paid for, so there is no new pass rate to report.
 
 ## Trial variation
 
@@ -96,4 +106,4 @@ First full run, Haiku, three trials per case: `story_found` passed in every tria
 
 ## Not yet done
 
-The `comparisons_grounded` residual, 10 of 48 after entry 12, with the three directions named there. Total project spend at the end of 2026-10-06: $11.66. Total project spend at the end of 2026-10-05: $8.93, see the slice 5 note; the follow-up note carries the spend since.
+The `comparisons_grounded` residual, 10 of 48 after entry 12, with the three directions named there. From entry 13: re-scoring the stored reviews with the new flag checks and reading every failure, to measure the reader's false-failure rate; the other limits in `docs/checks.md`; and calibrating the rubric grader against human labels. Total project spend at the end of 2026-10-06: $11.66. Total project spend at the end of 2026-10-05: $8.93, see the slice 5 note; the follow-up note carries the spend since.

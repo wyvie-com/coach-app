@@ -1,6 +1,6 @@
 # Coach: a personal AI training coach on Hevy data
 
-Specification, phase 1, written 2026-10-05 against the official documentation current on that date. Each external claim is labelled **Official** (from the cited page), **Secondary** (non-primary source) or **My reasoning** (design choice). Where the docs are silent that is said and the conservative option is taken.
+Specification, phase 1, written 2026-10-05 against the official documentation current on that date. Kept as approved; the code checks have changed since, and their current definitions are in `docs/checks.md`. Each external claim is labelled **Official** (from the cited page), **Secondary** (non-primary source) or **My reasoning** (design choice). Where the docs are silent that is said and the conservative option is taken.
 
 Sources: Hevy, the OpenAPI 3.0.0 document (`info.version` 0.0.1) embedded in `https://api.hevyapp.com/docs/swagger-ui-init.js`, which the Swagger page at `https://api.hevyapp.com/docs/` renders, cited as "Hevy OpenAPI". Claude, pages under `https://platform.claude.com/docs/en/`, cited by path.
 
