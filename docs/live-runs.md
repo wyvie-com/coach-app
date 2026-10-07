@@ -13,7 +13,7 @@ uv run coach eval --trials 3                   # out/eval/<timestamp>/, same mod
 uv run coach eval --trials 3 --batch           # the same through the Message Batches API at half price; wait, do not watch
 ```
 
-Run `review` once per week you want covered; `eval` once per prompt or model change. Prefer `--batch` for a full run: it costs half, and the report lists the batch ids, whose results the API keeps for 29 days if the session dies while waiting. Add `--model claude-sonnet-5-5` to either for the comparison model, and `--model` twice to `eval` for a side-by-side report.
+Run `review` once per finished week you want covered: a week still in progress is compared with a full week's baseline, so it reads as missed sessions. The default, last week, is always finished. Run `eval` once per prompt or model change. Prefer `--batch` for a full run: it costs half, and the report lists the batch ids, whose results the API keeps for 29 days if the session dies while waiting. Add `--model claude-sonnet-5-5` to either for the comparison model, and `--model` twice to `eval` for a side-by-side report.
 
 ## What to look at afterwards
 

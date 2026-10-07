@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict
 
 from coach.evals.cases import Case
 from coach.evals.flag_text import other_names, read
-from coach.figures import UnknownExerciseError, WeekFigures, exercise_history
+from coach.figures import Counts, UnknownExerciseError, WeekFigures, exercise_history
 from coach.model import WeekId, Workout
 from coach.review.loop import ReviewRun
 from coach.review.schema import Review
@@ -57,7 +57,10 @@ DATA_CHECK_NAMES = (
     "deload_grounded",
 )
 KG_TOLERANCE = 0.5
-_KG = re.compile(r"(\d+(?:\.\d+)?)\s*(?:kg|kilograms?)\b", re.IGNORECASE)
+#: "3,450 kg" is one number: read with its thousands separator, not as "450".
+_KG = re.compile(
+    r"(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:kg|kilograms?)\b", re.IGNORECASE
+)
 _SESSIONS = re.compile(r"\bsessions?\b", re.IGNORECASE)
 _PCT = re.compile(r"(-?\d+(?:\.\d+)?)\s*(?:%|percent\b|pct\b)", re.IGNORECASE)
 PCT_TOLERANCE = 0.05
@@ -67,6 +70,41 @@ _DELOAD = re.compile(r"\bdeload", re.IGNORECASE)
 _SUPERLATIVE = re.compile(
     r"\b(fastest|largest|biggest|strongest|greatest|slowest|smallest|weakest)\b", re.IGNORECASE
 )
+#: An ordinal before a superlative claims that place, not the lead: "the second-largest gain".
+_ORDINAL = re.compile(r"\b(second|third|2nd|3rd)[\s-]*$", re.IGNORECASE)
+_PLACES = {"second": 2, "2nd": 2, "third": 3, "3rd": 3}
+#: "one of the largest" claims a place in the top half, not the lead.
+_HEDGE = re.compile(r"\bone of (?:the|your|its)\s+(?:\w+\s+)?$", re.IGNORECASE)
+#: A superlative against the lift's own history, not the other lifts: "the strongest showing
+#: yet", "the strongest top set in this eight-week period".
+_OWN_HISTORY = re.compile(
+    r"(?:[^.;!?]|\.(?=\d)){0,50}?\b(?:yet|ever|on record|in (?:your|its) history"
+    r"|in (?:this|the) (?:[\w-]+ )?(?:window|period|block|cycle)|(?:on|for) this lift)\b",
+    re.IGNORECASE,
+)
+#: A superlative of a fall ranks the falls: "the largest four-week e1RM decline".
+_FALL_NOUN = re.compile(
+    r"\W*(?:[\w-]+\W+){0,3}?(?:declines?|drops?|falls?|loss(?:es)?|reductions?|dips?|decreases?)\b",
+    re.IGNORECASE,
+)
+_HIGH = frozenset({"fastest", "largest", "biggest", "strongest", "greatest"})
+#: The figures a ranking is checked against: the same three as ``leaders``.
+_RANKED = ("e1rm_change_4w_pct", "volume_change_1w_pct", "volume_kg")
+#: "across the board" said of effort or RPE is not a claim that every lift progressed: an
+#: effort word in the six words before it, inside the claim, or straight after ("higher RPE").
+_EFFORT_SCOPE = re.compile(r"\b(?:rpes?|effort|intensity|exertion)\b", re.IGNORECASE)
+_EFFORT_NEXT = re.compile(r"\s+(?:rpes?|effort|intensity|exertion)\b", re.IGNORECASE)
+#: Said of reductions, "across the board" is checked against the lifts that fell.
+_FALL_WORDS = re.compile(
+    r"\b(?:reduc\w*|lowered|backed off|dial+ed back|fell|dropped|declined|decreased)\b",
+    re.IGNORECASE,
+)
+_NEARLY = re.compile(r"\b(?:nearly|almost|virtually|practically)\s+$", re.IGNORECASE)
+_OR_HELD = re.compile(
+    r"\W*or (?:held|flat|steady|maintained|unchanged|stayed|stable)\b", re.IGNORECASE
+)
+_COUNT_WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8}
+_WORDS = re.compile(r"[A-Za-z0-9']+")
 _UNIVERSAL = re.compile(
     r"\b(?:all|every)\s+(?:\w+\s+)?(?:exercises?|lifts?|movements?)\b.{0,60}?"
     r"\b(?:improv|increas|rose|rising|progress|gain|grew|growth|advanc|higher|up)\w*"
@@ -180,7 +218,7 @@ def _data_checks(
 
     allowed = _grounding_values(figures, run, workouts, allow_differences=allow_differences)
     texts = [review.headline] + [f.text for f in review.highlights + review.concerns]
-    quoted = [float(m.group(1)) for text in texts for m in _KG.finditer(text)]
+    quoted = [float(m.group(1).replace(",", "")) for text in texts for m in _KG.finditer(text)]
     ungrounded = [q for q in quoted if not any(abs(q - v) <= KG_TOLERANCE for v in allowed)]
     results.append(
         CheckResult(
@@ -266,7 +304,7 @@ def _flag_checks(review: Review, figures: WeekFigures) -> list[CheckResult]:
     for flag in flags:
         others = other_names(flag.exercise, names)
         concerns = [f for f in review.concerns if f.exercise == flag.exercise]
-        readings = [read(flag.kind, f.text, others) for f in concerns]
+        readings = [read(flag.kind, f.text, others, own=flag.exercise) for f in concerns]
         if not any(r.states for r in readings):
             instead = sorted({kind for r in readings for kind in r.instead})
             if not concerns:
@@ -280,7 +318,7 @@ def _flag_checks(review: Review, figures: WeekFigures) -> list[CheckResult]:
             for finding in _section(review, section):
                 if finding.exercise != flag.exercise:
                     continue
-                clause = read(flag.kind, finding.text, others).opposite
+                clause = read(flag.kind, finding.text, others, own=flag.exercise).opposite
                 if clause:
                     opposite.append(
                         f"{flag.exercise} {section[:-1]} says '{clause}' against: {flag.text}"
@@ -321,6 +359,15 @@ def _pct_values(payload: Any) -> set[float]:
     return found
 
 
+#: The top of a range, "4-9%" or "4\u20139%", is a summary the model composed, not a figure.
+_RANGE_BEFORE = re.compile(r"\d\s*(?:-|\u2013|\u2014|to)\s*$")
+
+
+def _range_top(text: str, match: re.Match[str]) -> bool:
+    start = match.start(1) + (1 if match.group(1).startswith("-") else 0)
+    return _RANGE_BEFORE.search(text[:start]) is not None
+
+
 def _pct_check(
     review: Review, figures: WeekFigures, run: ReviewRun, workouts: Sequence[Workout]
 ) -> CheckResult:
@@ -354,6 +401,8 @@ def _pct_check(
     for exercise, text in findings:
         allowed = everything if exercise == "Overall" else per_exercise.get(exercise, set())
         for match in _PCT.finditer(text):
+            if _range_top(text, match):
+                continue
             quoted = abs(float(match.group(1)))
             if not any(abs(quoted - v) <= PCT_TOLERANCE for v in allowed):
                 where = "any exercise" if exercise == "Overall" else exercise
@@ -367,14 +416,32 @@ def _pct_check(
     )
 
 
+#: Before "deload", these make it advice: "consider a deload". After it, a modal does:
+#: "a brief deload may help".
+_DELOAD_ADVICE = frozenset({"consider", "considering", "try", "suggest", "recommend"})
+_MODALS = frozenset({"may", "might", "could", "would", "should", "can", "will"})
+
+
+def _claims_deload(text: str) -> bool:
+    """True when "deload" is said of the week rather than suggested."""
+    for match in _DELOAD.finditer(text):
+        before = _WORDS.findall(text[: match.start()].lower())[-4:]
+        after = _WORDS.findall(text[match.end() :].lower())[:3]
+        if any(w in _DELOAD_ADVICE for w in before) or any(w in _MODALS for w in after):
+            continue
+        return True
+    return False
+
+
 def _deload_check(review: Review, figures: WeekFigures) -> CheckResult:
     """The week may be called a deload only when a session title says so (rule 8, summary.deload).
 
     Suggestions are not checked: "consider a deload" is advice, not a claim about the week.
-    Rescoring the fourth full run showed 7 of 8 mentions were exactly that.
+    Rescoring the fourth full run showed 7 of 8 mentions were exactly that. The same advice
+    inside a concern ("a brief deload may help") is not a claim either (findings entry 15).
     """
     texts = [review.headline] + [f.text for f in review.highlights + review.concerns]
-    said = any(_DELOAD.search(t) for t in texts)
+    said = any(_claims_deload(t) for t in texts)
     unfounded = said and not figures.summary.deload
     return CheckResult(
         name="deload_grounded",
@@ -385,13 +452,105 @@ def _deload_check(review: Review, figures: WeekFigures) -> CheckResult:
     )
 
 
+def _place(
+    figures: WeekFigures, exercise: str, field: str, *, highest: bool
+) -> tuple[int, int, bool] | None:
+    """The exercise's place on one figure (1 is the top), the field's size, and if it is alone."""
+    values = [
+        (e.exercise, getattr(e, field)) for e in figures.exercises if getattr(e, field) is not None
+    ]
+    mine = next((v for name, v in values if name == exercise), None)
+    if mine is None:
+        return None
+    better = sum(1 for _, v in values if (v > mine if highest else v < mine))
+    alone = sum(1 for _, v in values if v == mine) == 1
+    return better + 1, len(values), alone
+
+
+def _superlative_supported(
+    figures: WeekFigures, exercise: str, text: str, match: re.Match[str]
+) -> bool:
+    """A superlative about one exercise must hold on some ranked figure.
+
+    Plain ("the largest") means alone at the top; an ordinal ("the second-largest") means that
+    place; "one of the largest" means the top half. A superlative of a fall ("the largest
+    decline") ranks from the bottom. A superlative against the lift's own history ("the
+    strongest yet") is not a ranking, like "highest" and "best", and is not checked.
+    """
+    after = text[match.end() :]
+    if _OWN_HISTORY.match(after):
+        return True
+    highest = match.group(1).lower() in _HIGH
+    if _FALL_NOUN.match(after):
+        highest = not highest
+    before = text[: match.start()]
+    ordinal = _ORDINAL.search(before)
+    hedged = _HEDGE.search(before) is not None
+    for field in _RANKED:
+        found = _place(figures, exercise, field, highest=highest)
+        if found is None:
+            continue
+        place, size, alone = found
+        if ordinal:
+            if place == _PLACES[ordinal.group(1).lower()]:
+                return True
+        elif hedged:
+            if place <= (size + 1) // 2:
+                return True
+        elif place == 1 and alone:
+            return True
+    return False
+
+
+def _claimed(text: str, match: re.Match[str]) -> str:
+    """The superlative as claimed, with its ordinal or hedge: "second-largest", "one of the..."."""
+    before = text[: match.start()]
+    qualifier = _ORDINAL.search(before) or _HEDGE.search(before)
+    return text[qualifier.start() if qualifier else match.start() : match.end()]
+
+
+def _universal_supported(counts: Counts, text: str, match: re.Match[str]) -> bool:
+    """A claim about every lift must match ``counts``, read with its qualifier and direction."""
+    n = counts.exercises
+    if n == 0:
+        return False
+    up = max(counts.e1rm_up_4w, counts.volume_up_1w)
+    claim = match.group(0)
+    words = _WORDS.findall(text[: match.start()])
+    tail = text[match.end() : match.end() + 30]
+    if (
+        _EFFORT_SCOPE.search(" ".join(words[-6:]))
+        or _EFFORT_SCOPE.search(claim)
+        or _EFFORT_NEXT.match(tail)
+    ):
+        return True  # about effort or RPE, not progress
+    if claim.lower() == "across the board":
+        if _FALL_WORDS.search(" ".join(words[-8:])):
+            return n in (counts.e1rm_down_4w, counts.volume_down_1w)
+        return n in (counts.e1rm_up_4w, counts.volume_up_1w)
+    second = claim.split()[1].lower()
+    if _NEARLY.search(text[: match.start()]):
+        return up * 2 > n
+    if second == "other":
+        return up >= n - 1
+    stated = _COUNT_WORDS.get(second) or (int(second) if second.isdigit() else None)
+    if stated is not None and stated < n:
+        return up >= stated
+    if _OR_HELD.match(tail):
+        return 0 in (counts.e1rm_down_4w, counts.volume_down_1w)
+    return n in (counts.e1rm_up_4w, counts.volume_up_1w)
+
+
 def _comparisons_check(review: Review, figures: WeekFigures) -> CheckResult:
-    """A ranking of exercises must match ``leaders``; "all" or "every" must match ``counts``.
+    """A ranking of exercises must match the figures; "all" or "every" must match ``counts``.
 
     Added after the Sonnet grader found a wrong "fastest" or "largest" in 5 of 16 reviews
-    (docs/findings.md). A finding about one exercise may use a superlative only when that
-    exercise leads on some figure; an "Overall" finding must name a leader in its text.
-    A universal claim of progress passes only when every exercise rose on e1RM or on volume.
+    (docs/findings.md). A finding about one exercise may use a superlative only when the
+    exercise holds the claimed place on some figure; an "Overall" finding must name a leader
+    in its text. A universal claim passes only when the counts bear it out: every lift up for
+    progress, every lift down for a fall, most for "nearly all", the stated number for "all
+    five". Re-scoring Claude's stored reviews found the check failing correct sentences
+    (findings entry 15): a true second place, a lift's own best, effort "across the board".
     """
     leaders = {name for name in figures.leaders.model_dump().values() if name}
     counts = figures.counts
@@ -399,28 +558,27 @@ def _comparisons_check(review: Review, figures: WeekFigures) -> CheckResult:
     findings = [("Overall", review.headline)] + [
         (f.exercise, f.text) for f in review.highlights + review.concerns + review.suggestions
     ]
-    for exercise, text in findings:
+    for exercise, raw in findings:
+        text = re.sub(r"across-the-board", "across the board", raw, flags=re.IGNORECASE)
         for match in _SUPERLATIVE.finditer(text):
-            supported = (
-                exercise in leaders
-                if exercise != "Overall"
-                else any(name in text for name in leaders)
-            )
+            if exercise == "Overall":
+                supported = _OWN_HISTORY.match(text[match.end() :]) is not None or any(
+                    name in text for name in leaders
+                )
+            else:
+                supported = _superlative_supported(figures, exercise, text, match)
             if not supported:
-                offences.append(f"{exercise}: '{match.group(0)}' not backed by leaders")
+                claimed = _claimed(text, match)
+                offences.append(f"{exercise}: '{claimed}' not backed by the figures")
         if exercise in leaders:
             continue  # "led all exercises" by the exercise that does lead is a ranking, not a claim
         for match in _UNIVERSAL.finditer(text):
-            full = counts.exercises > 0 and counts.exercises in (
-                counts.e1rm_up_4w,
-                counts.volume_up_1w,
-            )
-            if not full:
+            if not _universal_supported(counts, text, match):
                 offences.append(f"{exercise}: '{match.group(0)}' against counts")
     return CheckResult(
         name="comparisons_grounded",
         passed=not offences,
-        detail="rankings match leaders and counts" if not offences else "; ".join(offences),
+        detail="rankings match the figures and counts" if not offences else "; ".join(offences),
     )
 
 

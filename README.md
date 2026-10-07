@@ -1,12 +1,12 @@
 # Coach
 
-**Status: version 0.3.0, a single-account personal tool.** It runs the full pipeline on one person's Hevy log; anything in these documents about many users is a proposal and says so. Version 0.3.0 adds the check changes described in `docs/checks.md` to 0.2.0. `docs/later.md` lists what is deliberately not built.
+**Status: version 0.3.2, a single-account personal tool.** It runs the full pipeline on one person's Hevy log; anything in these documents about many users is a proposal and says so. Version 0.3.0 added the check changes described in `docs/checks.md` to 0.2.0; 0.3.1 fixes a reading error in them found on real weeks, and 0.3.2 the misreads found by re-scoring Claude's stored reviews (`docs/findings.md` entries 14 to 16). `docs/later.md` lists what is deliberately not built.
 
 ## For the reader with two minutes
 
 **What it does.** Coach reads a training log from the Hevy API, computes the week's figures in code (volume, top sets, estimated one-rep maxes where they are meaningful, rep PRs at matched loads, sessions against a four-week baseline, per-exercise history), and asks Claude to write a short weekly review: what went well, what needs attention, what to change next week. The design keeps the arithmetic in code: the model is given the figures and asked to copy them rather than work anything out, and code checks test what it quotes. Those checks have limits, listed in `docs/checks.md`, and the findings log records the model working out load steps itself and back-computing a figure that appears nowhere in the data. The code also flags the clear-cut concerns, such as a top set unchanged for four weeks, a four-week strength drop or a missed session, and writes the week's summary as sentences. The review is asked to carry every flag into its concerns and to copy, rather than compose, any claim that ranks the lifts or covers them all. Before it may call a lift progressing, stalled or regressing it must look at that lift's history through one strict tool. Its answer is constrained to a JSON schema by the API and validated again locally. A review can be valid for the API and the schema and still fail the quality checks: the checks report it beside the review, and nothing retries it.
 
-**What it costs.** Six Haiku 4.5 reviews of real weeks, on 2026-10-05 and 06, cost one to three cents each and took 7 to 14 seconds. On one week reviewed twice, with and without a cache breakpoint after the figures, the cost fell from $0.030 to $0.015. Sonnet 5.5 cost 1.8 times as much per review in the first eval run. A full eval run of 48 trials, reviewer and grader together, cost $0.64 and $0.66 the two times it ran through the Message Batches API at half price, taking 34 and 37 minutes; run live it is estimated at about $1.20.
+**What it costs.** Ten Haiku 4.5 reviews of real weeks, from 2026-10-05 to 07, cost one to three cents each and took 7 to 24 seconds. On one week reviewed twice, with and without a cache breakpoint after the figures, the cost fell from $0.030 to $0.015. Sonnet 5.5 cost 1.8 times as much per review in the first eval run. A full eval run of 48 trials, reviewer and grader together, cost $0.64 and $0.66 the two times it ran through the Message Batches API at half price, taking 34 and 37 minutes; run live it is estimated at about $1.20.
 
 **What the evals show, and what they do not.** Sixteen synthetic training logs, thirteen with a planted story (a bench stall, a squat PR, rising effort at the same load, missed sessions, a regression) and three negative cases where nothing is wrong, run through the same code path, three trials each. Thirteen code checks run first; `docs/checks.md` gives one line per check on what it measures and what it does not. A separate model grades four rubric dimensions second, and that grader has not been checked against human judgement.
 
@@ -21,13 +21,13 @@ The latest full run (Haiku 4.5, 2026-10-06, 48 trials) was scored with the check
 | `flags_in_concerns` | the flagged exercise appeared in concerns; the words were not read | 27 of 27 trials that had a flag; 21 trials had none |
 | `comparisons_grounded` | rankings and "all" claims matched the leaders and counts the code computed | 38 of 48 |
 
-None of those checks read what a finding said. A review built by hand that put the bench in concerns but called it "progressing normally and not stalled" passed all twelve; it is not model output. The checks now read the words for the flagged conditions (`flags_carried`, `flags_consistent`), but they have not yet been run on model output: the stored reviews have not been re-scored and no new run has been paid for.
+None of those checks read what a finding said. A review built by hand that put the bench in concerns but called it "progressing normally and not stalled" passed all twelve; it is not model output. The checks now read the words for the flagged conditions (`flags_carried`, `flags_consistent`). Re-scored over Claude's 164 stored eval reviews (findings entry 15), they wrongly failed 8 of the 89 trials that had a flag and caught 7 real errors. 0.3.2 fixes the three patterns behind those misreads (entry 16), but the fixes were tuned on the same trials, and no fresh run has yet measured them on reviews they were not tuned on.
 
-The suite reached those numbers in steps, recorded in `docs/findings.md` with pass rates before and after, including one prompt change withdrawn because it measured worse. The steps are not a controlled comparison: the first run had 15 cases and 45 trials, the latest 16 cases and 48, and the checks, the prompt and the figures changed in between. The open issue is the last row: the review still says "across the board" when five lifts in six moved, or ranks the second-placed lift first. No review on either model refused, truncated or invented an exercise.
+The suite reached those numbers in steps, recorded in `docs/findings.md` with pass rates before and after, including one prompt change withdrawn because it measured worse. The steps are not a controlled comparison: the first run had 15 cases and 45 trials, the latest 16 cases and 48, and the checks, the prompt and the figures changed in between. The open issue is the last row. Read in full (entry 15), its 10 failures were 6 real errors, four "across the board" when five lifts in six moved and two false superlatives, and 4 correct sentences the check misread, fixed in 0.3.2. No review on either model refused, truncated or invented an exercise.
 
 **Known limits.** The checks read words and numbers, not meaning:
 
-- The flag checks read the highlights and concerns about a flagged exercise, by word families. They do not read the headline or suggestions, check the numbers inside a statement, or follow phrasing outside their word lists, and their false-failure rate on model prose is unknown.
+- The flag checks read the highlights and concerns about a flagged exercise, by word families. They do not read the headline or suggestions, check the numbers inside a statement, or follow phrasing outside their word lists, and on Claude's stored reviews they wrongly failed 8 of the 89 trials that had a flag before the fixes in 0.3.2; their rate on reviews the fixes were not tuned on is not yet measured.
 - Kilogram grounding accepts a real number attached to the wrong exercise, metric or week. Percentage grounding ignores the sign and the window. Neither reads suggestions.
 - A rep PR, rising effort and steady progress are checked for placement only.
 - Meaning beyond the code checks rests on the rubric grader, which is uncalibrated.
@@ -56,7 +56,7 @@ src/coach/
 
 ```
 uv sync
-uv run pytest                                   # 217 tests, no network, no key
+uv run pytest                                   # 263 tests, no network, no key
 cp .env.example .env                            # COACH_ANTHROPIC_API_KEY; HEVY_API_KEY or the proxy route
 uv run coach check-credentials                  # two status codes, nothing else
 uv run coach pull                               # private/hevy/<date>/

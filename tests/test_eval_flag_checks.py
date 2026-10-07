@@ -12,6 +12,7 @@ import pytest
 
 from coach.evals.cases import CASES, build_case
 from coach.evals.checks import run_checks
+from coach.evals.flag_text import other_names, read
 from coach.figures import Flag, week_figures
 from coach.pricing import Cost
 from coach.review.loop import ReviewRun, ToolCall
@@ -367,3 +368,193 @@ def test_more_everyday_paraphrases_carry_the_flag(name: str, exercise: str, text
     results = _results(built, _review(concerns=[Finding(exercise=exercise, text=text)]), calls)
     assert results["flags_carried"].passed, results["flags_carried"].detail
     assert results["flags_consistent"].passed, results["flags_consistent"].detail
+
+
+# The flagged exercise's own name. Found on a real week (docs/findings.md entry 14): a concern
+# naming Seated Incline Curl was read as being about Incline Bench Press, whose short name
+# "incline" is also a word of the curl's name, so the stall it stated was missed.
+INCLINE_CURL, INCLINE_PRESS = "Seated Incline Curl (Dumbbell)", "Incline Bench Press (Barbell)"
+
+
+def _renamed(built, names: dict[str, str]):
+    """The case's figures with exercises renamed, flags included, to make two names collide."""
+    _, figures = built
+    exercises = [
+        e.model_copy(update={"exercise": names.get(e.exercise, e.exercise)})
+        for e in figures.exercises
+    ]
+    flags = [
+        f.model_copy(
+            update={
+                "exercise": names.get(f.exercise, f.exercise),
+                "text": f.text.replace(f.exercise, names.get(f.exercise, f.exercise)),
+            }
+        )
+        for f in figures.summary.flags
+    ]
+    summary = figures.summary.model_copy(update={"flags": flags})
+    return figures.model_copy(update={"exercises": exercises, "summary": summary})
+
+
+@pytest.mark.parametrize(
+    "names, flagged, text",
+    [
+        (
+            {BENCH: INCLINE_CURL, SQUAT: INCLINE_PRESS},
+            INCLINE_CURL,
+            "Seated Incline Curl has held at 80 kg x 5 for 5 consecutive weeks and needs "
+            "progression.",
+        ),
+        (
+            {BENCH: "Romanian Deadlift (Barbell)"},
+            "Romanian Deadlift (Barbell)",
+            "Romanian Deadlift has held at 80 kg x 5 for five weeks.",
+        ),
+        (
+            {BENCH: "Straight Arm Lat Pulldown (Cable)"},
+            "Straight Arm Lat Pulldown (Cable)",
+            "Straight Arm Lat Pulldown has stalled at 80 kg x 5 for five weeks.",
+        ),
+        (
+            {BENCH: "Incline Bench Press (Dumbbell)", SQUAT: "Incline Bench Press (Smith Machine)"},
+            "Incline Bench Press (Dumbbell)",
+            "Incline Bench Press has held at 80 kg x 5 for five weeks.",
+        ),
+    ],
+)
+def test_another_lifts_name_inside_the_flagged_name_does_not_hide_the_finding(
+    stall, names: dict[str, str], flagged: str, text: str
+) -> None:
+    # Each week also holds a lift whose prose name is part of the flagged one's name:
+    # "incline" (Incline Bench Press), "deadlift" (Deadlift), "lat pulldown" (Lat Pulldown),
+    # or all of it, for two variants of one lift.
+    figures = _renamed(stall, names)
+    review = _review(concerns=[Finding(exercise=flagged, text=text)])
+    results = _results(stall, review, figures=figures)
+    assert results["flags_carried"].passed, results["flags_carried"].detail
+    assert results["flags_consistent"].passed, results["flags_consistent"].detail
+
+
+def test_a_longer_name_containing_the_flagged_one_is_still_another_lift() -> None:
+    # Guards the fix: "lat pulldown" inside "straight arm lat pulldown" is not the flagged
+    # exercise. "Straight" is shared by two lifts here, so only the full name identifies it.
+    names = ["Lat Pulldown (Cable)", "Straight Arm Lat Pulldown (Cable)", "Straight Leg Deadlift"]
+    text = (
+        "Lat Pulldown has held at 60 kg x 10 for five weeks, while straight arm lat pulldown rose."
+    )
+    reading = read("stall", text, other_names(names[0], names), own=names[0])
+    assert reading.states and reading.opposite is None
+
+
+def test_cue_words_in_the_flagged_name_are_not_read_as_claims() -> None:
+    # "Decline" is a word for a fall; as part of the exercise's own name it claims nothing.
+    names = ["Decline Bench Press (Barbell)", SQUAT]
+    others = other_names(names[0], names)
+    text = "Decline Bench Press has been at 70 kg x 6 for five weeks."
+    assert read("stall", text, others, own=names[0]).states  # the duration states the stall
+    assert not read("e1rm_drop_4w", text, others, own=names[0]).states  # and states no fall
+
+
+def test_known_limit_a_shortened_flagged_name_can_still_read_as_another_lift() -> None:
+    # Pinned (docs/checks.md): only the title, with or without its equipment, is read as the
+    # flagged exercise's name. "The incline curl" still contains Incline Bench Press's short
+    # name, so the clause is read as being about the press. A change that closes this should
+    # update this test.
+    names = [INCLINE_CURL, INCLINE_PRESS]
+    text = "The incline curl has held at 80 kg x 5 for five weeks."
+    assert not read("stall", text, other_names(INCLINE_CURL, names), own=INCLINE_CURL).states
+
+
+# Correct findings the reader failed on Claude's stored reviews (docs/findings.md entry 15),
+# rewritten here on the synthetic cases. Each states its flag; none says the opposite.
+@pytest.mark.parametrize(
+    "name, exercise, text",
+    [
+        # "progress" inside a phrase that states the stall
+        (
+            "bench_stall-1",
+            BENCH,
+            "Top set unchanged at 80 kg x 5 for 5 consecutive weeks, indicating stalled progress.",
+        ),
+        (
+            "bench_stall-1",
+            BENCH,
+            "Top set stuck at 80 kg x 5 for 5 consecutive weeks, stalling progress on a main lift.",
+        ),
+        (
+            "bench_stall-1",
+            BENCH,
+            "The top set has stayed at 80 kg for 5 reps for five weeks, stalling your progress.",
+        ),
+        (
+            "rising_rpe-1",
+            DEADLIFT,
+            "Top set unchanged at 140 kg x 5 for 5 consecutive weeks, signalling a stall in "
+            "progress.",
+        ),
+        # a "no" or "without" four words back, across a short list
+        (
+            "rising_rpe-1",
+            DEADLIFT,
+            "The top set has held at 140 kg for 5 reps for five weeks despite no load or rep "
+            "increases.",
+        ),
+        (
+            "bench_stall-1",
+            BENCH,
+            "Stalled at 80 kg for 5 reps, five consecutive weeks without load or rep increases.",
+        ),
+        # advice read as a claim
+        (
+            "rising_rpe-1",
+            DEADLIFT,
+            "The top set has held at 140 kg for 5 reps for five weeks, so the load is getting "
+            "harder to hold, time to push for a weight increase.",
+        ),
+        (
+            "missed_sessions-1",
+            "Overall",
+            "You missed 2 sessions this week. Consistent attendance is essential for maintaining "
+            "your progress.",
+        ),
+    ],
+)
+def test_correct_findings_the_reader_once_misread_now_pass(
+    name: str, exercise: str, text: str
+) -> None:
+    built = _built(name)
+    calls = [] if exercise == "Overall" else [_call(exercise)]
+    results = _results(built, _review(concerns=[Finding(exercise=exercise, text=text)]), calls)
+    assert results["flags_carried"].passed, results["flags_carried"].detail
+    assert results["flags_consistent"].passed, results["flags_consistent"].detail
+
+
+@pytest.mark.parametrize(
+    "name, exercise, text",
+    [
+        # the narrower rules leave real contradictions standing
+        ("bench_stall-1", BENCH, "Bench stalled before progressing again this week."),
+        ("bench_stall-1", BENCH, "Bench stalled earlier, but progress resumed this week."),
+        ("bench_stall-1", BENCH, "Bench rose 2.5 kg this week; time to consolidate."),
+        ("rising_rpe-1", DEADLIFT, "No deload and the deadlift rose 2.5 kg this week."),
+        # a review on a stored run said this of a five-week hold; it denies the stall
+        (
+            "rising_rpe-1",
+            DEADLIFT,
+            "The top set has held at 140 kg for five weeks. While not yet a full stall, the rising "
+            "effort with no load or rep increase needs attention.",
+        ),
+        (
+            "missed_sessions-1",
+            "Overall",
+            "Consistent attendance this week: all three sessions done.",
+        ),
+    ],
+)
+def test_contradictions_still_fail_after_the_reader_fixes(
+    name: str, exercise: str, text: str
+) -> None:
+    built = _built(name)
+    calls = [] if exercise == "Overall" else [_call(exercise)]
+    results = _results(built, _review(concerns=[Finding(exercise=exercise, text=text)]), calls)
+    assert not results["flags_consistent"].passed, text
