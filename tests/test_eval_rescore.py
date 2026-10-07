@@ -55,7 +55,23 @@ def test_rescore_reports_strict_and_refined_grounding(tmp_path: Path) -> None:
     assert refined.by_model[model]["kg_grounded"] == (1, 2)
     assert strict.by_model[model]["kg_grounded"] == (0, 2)
     assert refined.by_model[model]["concern_preceded_by_tool"] == (2, 2)
-    assert refined.by_model[model]["story_found"] == (2, 2)
+    assert refined.by_model[model]["expected_placement"] == (2, 2)
+    assert refined.by_model[model]["flags_carried"] == (2, 2)  # "Flat for five weeks"
     assert refined.by_model[model]["sessions_threshold"] == (2, 2)
     text = refined.render()
     assert "kg_grounded" in text and model in text
+
+
+def test_rescore_counts_not_applicable_apart(tmp_path: Path) -> None:
+    path = tmp_path / "trials.jsonl"
+    rows = [_row("bench_stall-1", "Bench stalled."), _row("negative_quiet-1", "Quiet week.")]
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    result = rescore(path)
+    model = "claude-haiku-4-5-20251001"
+    # The negative case plants nothing: placement and the flag checks are n/a there, not passes.
+    assert result.by_model[model]["expected_placement"] == (1, 1)
+    assert result.not_applicable[model]["expected_placement"] == 1
+    assert result.by_model[model]["flags_carried"] == (1, 1)
+    assert result.not_applicable[model]["flags_carried"] == 1
+    assert result.by_model[model]["no_false_alarm"] == (1, 2)  # the bench concern is unplanted
+    assert "n/a 1" in result.render()

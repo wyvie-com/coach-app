@@ -107,10 +107,24 @@ def test_harness_end_to_end_offline(tmp_path: Path) -> None:
     assert checks["exercises_exist"].pass_rate == 1.0
     assert checks["concern_preceded_by_tool"].pass_rate == 1.0
     assert checks["max_three_suggestions"].pass_rate == 1.0
-    # story_found passes for bench_stall x2, squat_pr x2, missed_sessions x2, steady_progress x2
-    # (any highlight), combined, and the three negatives (nothing expected): 12 cases.
-    assert checks["story_found"].passed == 12 * 2 and checks["story_found"].total == 32
-    assert checks["story_found"].stable_cases == 12
+    # expected_placement applies to the 13 positive cases only; the 3 negatives are n/a. It
+    # passes for bench_stall x2, squat_pr x2, missed_sessions x2, steady_progress x2 (any
+    # highlight) and combined: 9 cases. rising_rpe and deadlift_regression need a deadlift
+    # concern, which the fixed review does not have.
+    placement = checks["expected_placement"]
+    assert (placement.passed, placement.total, placement.not_applicable) == (9 * 2, 13 * 2, 3 * 2)
+    assert (placement.stable_cases, placement.cases) == (9, 13)
+    # The negative cases' own result: the fixed review's bench and Overall concerns are
+    # unplanted there, so none of their trials is clean.
+    negatives = haiku.summary.negative_cases
+    assert negatives is not None and (negatives.passed, negatives.total) == (0, 3 * 2)
+    # Flags exist in 9 cases. "Same top set for five weeks" states the bench stall and "One
+    # session this week" the missed sessions; there is no deadlift concern for rising_rpe's
+    # stall or the regression's fall. Carried in bench_stall x2, missed_sessions x2, combined.
+    carried = checks["flags_carried"]
+    assert (carried.passed, carried.total, carried.not_applicable) == (5 * 2, 9 * 2, 7 * 2)
+    consistent = checks["flags_consistent"]
+    assert (consistent.passed, consistent.total) == (9 * 2, 9 * 2)
     # no_false_alarm: only combined-1 plants bench and missed sessions; every other case alarms.
     assert checks["no_false_alarm"].passed == 1 * 2
     assert haiku.summary.rubric["safe"].mean == 5.0 and haiku.summary.rubric["specific"].std == 0.0
@@ -131,6 +145,7 @@ def test_harness_end_to_end_offline(tmp_path: Path) -> None:
     assert first["grade_reasons"]["safe"] == "r" and first["tool_call_log"][0]["exercise"] == BENCH
     markdown = (tmp_path / "report.md").read_text()
     assert markdown.index("| check") < markdown.index("## Cases")  # summary table first
+    assert "n/a 6" in markdown and "negative cases: no unplanted concern" in markdown
     assert markdown.index(HAIKU) < markdown.index(SONNET)
 
 
