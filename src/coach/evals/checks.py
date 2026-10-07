@@ -4,7 +4,12 @@ Each check is a pure function of the case, the figures, the run record and the
 workouts (used to recompute tool results, which the run record does not store). A
 run without a review fails every check: a review that does not exist found nothing.
 
-What each check can and cannot catch is written in docs/notes/slice-4.md.
+A check with nothing to test returns ``applicable=False`` instead of a pass: placement
+on a negative case, where nothing was planted, and the flag checks in a week with no
+flags. Reports count those separately, so a pass rate is over the trials a check
+actually tested.
+
+What each check measures, and what it does not, is in docs/checks.md.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from coach.evals.cases import Case
+from coach.evals.flag_text import other_names, read
 from coach.figures import UnknownExerciseError, WeekFigures, exercise_history
 from coach.model import WeekId, Workout
 from coach.review.loop import ReviewRun
@@ -23,7 +29,7 @@ from coach.review.schema import Review
 
 CHECK_NAMES = (
     "schema_valid",
-    "story_found",
+    "expected_placement",
     "no_false_alarm",
     "exercises_exist",
     "kg_grounded",
@@ -31,7 +37,8 @@ CHECK_NAMES = (
     "max_three_suggestions",
     "sessions_threshold",
     "comparisons_grounded",
-    "flags_in_concerns",
+    "flags_carried",
+    "flags_consistent",
     "pct_grounded",
     "deload_grounded",
 )
@@ -44,7 +51,8 @@ DATA_CHECK_NAMES = (
     "max_three_suggestions",
     "sessions_threshold",
     "comparisons_grounded",
-    "flags_in_concerns",
+    "flags_carried",
+    "flags_consistent",
     "pct_grounded",
     "deload_grounded",
 )
@@ -70,13 +78,19 @@ SESSIONS_CONCERN_THRESHOLD = 1.0
 
 
 class CheckResult(BaseModel):
-    """One check's verdict with a one-line reason."""
+    """One check's verdict with a one-line reason.
+
+    ``applicable=False`` means the check had nothing to test in this trial. Such a result
+    keeps ``passed=True`` so it never reads as a failure, and every report counts it apart
+    from passes so it never reads as one either.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     name: str
     passed: bool
     detail: str
+    applicable: bool = True
 
 
 def _kg_values(payload: Any) -> set[float]:
@@ -222,28 +236,71 @@ def _data_checks(
         )
     )
     results.append(_comparisons_check(review, figures))
-    results.append(_flags_check(review, figures))
+    results.extend(_flag_checks(review, figures))
     results.append(_pct_check(review, figures, run, workouts))
     results.append(_deload_check(review, figures))
     return results
 
 
-def _flags_check(review: Review, figures: WeekFigures) -> CheckResult:
-    """Every flag the code raised must appear in concerns under its exercise.
+def _flag_checks(review: Review, figures: WeekFigures) -> list[CheckResult]:
+    """Is each computed flag stated in concerns, and does no finding say its opposite?
 
-    Added after the fourth full run (docs/findings.md entry 11), where the two planted stories
-    the model missed were both figures it had been given and chose to read kindly: a one-session
-    week called a deload, a five-week stall called "held steady". The flags take that choice away.
+    Two checks where there was one. ``flags_in_concerns`` asked only whether the flagged
+    exercise appeared in concerns, so a concern saying the bench "is progressing normally
+    and is not stalled" passed it on a planted stall (docs/findings.md entry 13).
+
+    ``flags_carried``: for every flag, some concern under its exercise (or "Overall")
+    states the flagged condition, read by coach.evals.flag_text, and says nothing opposite.
+    ``flags_consistent``: no highlight or concern under that exercise says the opposite.
+    The headline and suggestions are not read; see docs/checks.md for the other limits.
     """
-    named = {f.exercise for f in review.concerns}
-    missing = [flag.text for flag in figures.summary.flags if flag.exercise not in named]
-    return CheckResult(
-        name="flags_in_concerns",
-        passed=not missing,
-        detail=f"{len(figures.summary.flags)} flags, all in concerns"
-        if not missing
-        else "flags not in concerns: " + "; ".join(missing),
-    )
+    flags = figures.summary.flags
+    if not flags:
+        return [
+            CheckResult(name=name, passed=True, applicable=False, detail="no flags this week")
+            for name in ("flags_carried", "flags_consistent")
+        ]
+    names = [e.exercise for e in figures.exercises]
+    missing: list[str] = []
+    opposite: list[str] = []
+    for flag in flags:
+        others = other_names(flag.exercise, names)
+        concerns = [f for f in review.concerns if f.exercise == flag.exercise]
+        readings = [read(flag.kind, f.text, others) for f in concerns]
+        if not any(r.states for r in readings):
+            instead = sorted({kind for r in readings for kind in r.instead})
+            if not concerns:
+                why = "no concern for it"
+            elif instead:
+                why = "its concern describes " + " and ".join(instead) + " instead"
+            else:
+                why = "no concern states it"
+            missing.append(f"{flag.text} ({why})")
+        for section in ("highlights", "concerns"):
+            for finding in _section(review, section):
+                if finding.exercise != flag.exercise:
+                    continue
+                clause = read(flag.kind, finding.text, others).opposite
+                if clause:
+                    opposite.append(
+                        f"{flag.exercise} {section[:-1]} says '{clause}' against: {flag.text}"
+                    )
+    return [
+        CheckResult(
+            name="flags_carried",
+            passed=not missing,
+            detail=f"{len(flags)} flags, each stated in a concern"
+            if not missing
+            else "not carried: " + "; ".join(missing),
+        ),
+        CheckResult(
+            name="flags_consistent",
+            passed=not opposite,
+            detail="no finding says the opposite of a flag"
+            if not opposite
+            else "; ".join(opposite),
+        ),
+    ]
 
 
 def _pct_values(payload: Any) -> set[float]:
@@ -368,6 +425,28 @@ def _comparisons_check(review: Review, figures: WeekFigures) -> CheckResult:
 
 
 def _story_checks(case: Case, review: Review) -> list[CheckResult]:
+    """Placement of the planted story, and no concern that was not planted.
+
+    ``expected_placement`` was called ``story_found`` until 2026-10-07. It checks that the
+    expected exercise appears in the expected section, nothing about what the finding says;
+    the flag checks read the words. A negative case plants nothing, so placement does not
+    apply there and ``no_false_alarm`` is its result.
+    """
+    planted = {e.exercise for e in case.expected if e.section == "concerns"}
+    alarms = [f.exercise for f in review.concerns if f.exercise not in planted]
+    no_false_alarm = CheckResult(
+        name="no_false_alarm",
+        passed=not alarms,
+        detail="no unplanted concern" if not alarms else "unplanted concerns: " + ", ".join(alarms),
+    )
+    if not case.expected:
+        placement = CheckResult(
+            name="expected_placement",
+            passed=True,
+            applicable=False,
+            detail="negative case: nothing planted, so nothing to place; see no_false_alarm",
+        )
+        return [placement, no_false_alarm]
     missing = []
     for expectation in case.expected:
         findings = _section(review, expectation.section)
@@ -376,24 +455,14 @@ def _story_checks(case: Case, review: Review) -> list[CheckResult]:
         )
         if not hit:
             missing.append(f"{expectation.exercise} in {expectation.section}")
-    planted = {e.exercise for e in case.expected if e.section == "concerns"}
-    alarms = [f.exercise for f in review.concerns if f.exercise not in planted]
-    return [
-        CheckResult(
-            name="story_found",
-            passed=not missing,
-            detail="all expected findings present"
-            if not missing
-            else "missing: " + "; ".join(missing),
-        ),
-        CheckResult(
-            name="no_false_alarm",
-            passed=not alarms,
-            detail="no unplanted concern"
-            if not alarms
-            else "unplanted concerns: " + ", ".join(alarms),
-        ),
-    ]
+    placement = CheckResult(
+        name="expected_placement",
+        passed=not missing,
+        detail="each expected exercise is in its expected section (placement, not meaning)"
+        if not missing
+        else "missing: " + "; ".join(missing),
+    )
+    return [placement, no_false_alarm]
 
 
 def _no_review(names: Sequence[str], run: ReviewRun) -> list[CheckResult]:

@@ -46,8 +46,14 @@ def render_markdown(
     ]
     if checks is not None:
         lines += ["", "## Checks"]
-        lines += [f"- {c.name}: {'pass' if c.passed else 'FAIL'} ({c.detail})" for c in checks]
+        lines += [f"- {c.name}: {_status(c)} ({c.detail})" for c in checks]
     return "\n".join(lines) + "\n"
+
+
+def _status(check: CheckResult) -> str:
+    if not check.applicable:
+        return "n/a"
+    return "pass" if check.passed else "FAIL"
 
 
 def write_run(

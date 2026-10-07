@@ -30,13 +30,19 @@ from coach.review.loop import ReviewRun, run_review
 
 
 class CheckSummary(BaseModel):
-    """Pass rate over all trials, and how many cases passed in every trial."""
+    """Pass rate over the trials a check applied to, and how many cases passed in every trial.
+
+    ``total`` and ``cases`` count only trials and cases the check could test; trials where it
+    had nothing to test are in ``not_applicable``, never in the pass rate.
+    """
 
     model_config = ConfigDict(frozen=True)
     passed: int
     total: int
     pass_rate: float
     stable_cases: int
+    not_applicable: int = 0
+    cases: int = 0
 
 
 class RubricSummary(BaseModel):
@@ -55,6 +61,8 @@ class ModelSummary(BaseModel):
 
     model_config = ConfigDict(frozen=True)
     checks: dict[str, CheckSummary]
+    #: ``no_false_alarm`` on the negative cases alone, the result for weeks with nothing planted.
+    negative_cases: CheckSummary | None = None
     rubric: dict[str, RubricSummary]
     outcomes: dict[str, int]
     tool_calls_mean: float
@@ -73,7 +81,8 @@ class TrialRecord(BaseModel):
     trial: int
     model: str
     outcome: str
-    checks: dict[str, bool]
+    #: True pass, False fail, None not applicable (the check had nothing to test).
+    checks: dict[str, bool | None]
     check_details: dict[str, str]
     grade_outcome: str | None
     scores: dict[str, int] | None
@@ -141,19 +150,33 @@ def _order(models: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(haiku + rest))
 
 
-def _summarise(trials: list[TrialRecord], case_names: list[str]) -> ModelSummary:
-    checks = {}
-    for name in CHECK_NAMES:
-        passed = sum(1 for t in trials if t.checks.get(name))
-        stable = sum(
-            1 for case in case_names if all(t.checks.get(name) for t in trials if t.case == case)
-        )
-        checks[name] = CheckSummary(
-            passed=passed,
-            total=len(trials),
-            pass_rate=passed / len(trials) if trials else 0.0,
-            stable_cases=stable,
-        )
+def _check_summary(trials: list[TrialRecord], name: str, case_names: list[str]) -> CheckSummary:
+    tested = [t for t in trials if t.checks.get(name) is not None]
+    passed = sum(1 for t in tested if t.checks[name])
+    tested_cases = [case for case in case_names if any(t.case == case for t in tested)]
+    stable = sum(
+        1 for case in tested_cases if all(t.checks[name] for t in tested if t.case == case)
+    )
+    return CheckSummary(
+        passed=passed,
+        total=len(tested),
+        pass_rate=passed / len(tested) if tested else 0.0,
+        stable_cases=stable,
+        not_applicable=len(trials) - len(tested),
+        cases=len(tested_cases),
+    )
+
+
+def _summarise(
+    trials: list[TrialRecord], case_names: list[str], negative_cases: frozenset[str] = frozenset()
+) -> ModelSummary:
+    checks = {name: _check_summary(trials, name, case_names) for name in CHECK_NAMES}
+    negatives = [t for t in trials if t.case in negative_cases]
+    negative_summary = (
+        _check_summary(negatives, "no_false_alarm", [c for c in case_names if c in negative_cases])
+        if negatives
+        else None
+    )
     rubric = {}
     for dim in RUBRIC:
         values = [t.scores[dim] for t in trials if t.scores]
@@ -173,6 +196,7 @@ def _summarise(trials: list[TrialRecord], case_names: list[str]) -> ModelSummary
     n = len(trials) or 1
     return ModelSummary(
         checks=checks,
+        negative_cases=negative_summary,
         rubric=rubric,
         outcomes=dict(sorted(outcomes.items())),
         tool_calls_mean=sum(t.tool_calls for t in trials) / n,
@@ -198,8 +222,8 @@ def _record(
         trial=trial,
         model=model,
         outcome=run.outcome,
-        checks={r.name: r.passed for r in results},
-        check_details={r.name: r.detail for r in results if not r.passed},
+        checks={r.name: r.passed if r.applicable else None for r in results},
+        check_details={r.name: r.detail for r in results if r.applicable and not r.passed},
         grade_outcome=None if graded is None else graded.outcome,
         scores=None if graded is None else graded.scores,
         grade_reasons=None if graded is None else graded.reasons,
@@ -247,7 +271,7 @@ def _append(jsonl: Path, record: TrialRecord) -> None:
 
 
 def _describe(record: TrialRecord, spent: float) -> str:
-    failed = [n for n, ok in record.checks.items() if not ok]
+    failed = [n for n, ok in record.checks.items() if ok is False]
     return (
         f"{record.model} {record.case} t{record.trial}: {record.outcome}, "
         f"{len(failed)} failed{' (' + ', '.join(failed) + ')' if failed else ''}, "
@@ -283,6 +307,7 @@ def run_eval(
     reports: list[ModelReport] = []
     stopped_early: str | None = None
     spent = 0.0
+    negative = frozenset(c.name for c in cases if not c.expected)
     for model in _order(models):
         if stopped_early:
             break
@@ -294,7 +319,7 @@ def run_eval(
             reports.append(
                 ModelReport(
                     model=model,
-                    summary=_summarise(records, [c.name for c in cases]),
+                    summary=_summarise(records, [c.name for c in cases], negative),
                     trials=records,
                 )
             )
@@ -351,7 +376,9 @@ def run_eval(
                     break
         reports.append(
             ModelReport(
-                model=model, summary=_summarise(records, [c.name for c in cases]), trials=records
+                model=model,
+                summary=_summarise(records, [c.name for c in cases], negative),
+                trials=records,
             )
         )
     report = EvalReport(

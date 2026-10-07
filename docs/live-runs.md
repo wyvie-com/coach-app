@@ -17,7 +17,7 @@ Run `review` once per week you want covered; `eval` once per prompt or model cha
 
 ## What to look at afterwards
 
-- `out/<week>/review.md`: the review, the run (turns, tool calls, cost, seconds) and the nine data-bound checks.
+- `out/<week>/review.md`: the review, the run (turns, tool calls, cost, seconds) and the eleven data-bound checks; a check with nothing to test shows n/a, and a failed check does not stop the command.
 - `out/<week>/run.json`: outcome, every request's usage, every tool call. A non-`ok` outcome is a finding.
 - `out/eval/<timestamp>/report.md`: the summary table first. `trials.jsonl` has every trial with its review, so `coach rescore` can re-run changed checks for free.
 

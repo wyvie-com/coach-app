@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from coach.evals.checks import CHECK_NAMES
 from coach.evals.grader import RUBRIC
-from coach.evals.harness import EvalReport
+from coach.evals.harness import CheckSummary, EvalReport
+
+
+def _check_cell(c: CheckSummary) -> str:
+    if c.total == 0:
+        return f"n/a ({c.not_applicable} trials)"
+    cell = f"{c.pass_rate:.0%} ({c.passed}/{c.total})"
+    if c.not_applicable:
+        cell += f", n/a {c.not_applicable}"
+    return cell + f", stable {c.stable_cases}/{c.cases}"
 
 
 def render_markdown(report: EvalReport) -> str:
@@ -28,16 +37,27 @@ def render_markdown(report: EvalReport) -> str:
         "",
         "## Summary",
         "",
+        "Each pass rate is over the trials a check could test. n/a counts the trials it could "
+        "not: expected_placement on a negative case, the flag checks in a week with no flags. "
+        "A pass means the check found nothing wrong within what it reads; docs/checks.md says "
+        "what each check does not test.",
+        "",
         "| check | " + " | ".join(models) + " |",
         "| --- | " + " | ".join("---" for _ in models) + " |",
     ]
     for name in CHECK_NAMES:
         cells = []
         for m in report.models:
-            c = m.summary.checks[name]
-            stable = f"stable {c.stable_cases}/{len(report.cases)}"
-            cells.append(f"{c.pass_rate:.0%} ({c.passed}/{c.total}), {stable}")
+            cells.append(_check_cell(m.summary.checks[name]))
         lines.append(f"| {name} | " + " | ".join(cells) + " |")
+    lines.append(
+        "| negative cases: no unplanted concern | "
+        + " | ".join(
+            "-" if m.summary.negative_cases is None else _check_cell(m.summary.negative_cases)
+            for m in report.models
+        )
+        + " |"
+    )
     lines += [
         "",
         "| rubric (1 to 5) | " + " | ".join(models) + " |",
@@ -74,7 +94,7 @@ def render_markdown(report: EvalReport) -> str:
         lines.append(f"### {case}")
         for m in report.models:
             for t in (t for t in m.trials if t.case == case):
-                failed = [n for n, ok in t.checks.items() if not ok]
+                failed = [n for n, ok in t.checks.items() if ok is False]
                 scores = "-" if not t.scores else "/".join(str(t.scores[d]) for d in RUBRIC)
                 detail = "; ".join(f"{n}: {t.check_details[n]}" for n in failed)
                 cost = t.review_cost_usd + t.grader_cost_usd

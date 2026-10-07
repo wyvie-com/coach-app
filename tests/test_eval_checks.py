@@ -52,7 +52,7 @@ def stall():
 def test_check_names_match_the_spec() -> None:
     assert CHECK_NAMES == (
         "schema_valid",
-        "story_found",
+        "expected_placement",
         "no_false_alarm",
         "exercises_exist",
         "kg_grounded",
@@ -60,7 +60,8 @@ def test_check_names_match_the_spec() -> None:
         "max_three_suggestions",
         "sessions_threshold",
         "comparisons_grounded",
-        "flags_in_concerns",
+        "flags_carried",
+        "flags_consistent",
         "pct_grounded",
         "deload_grounded",
     )
@@ -88,7 +89,7 @@ def test_no_review_fails_every_check(stall) -> None:
     assert all("refusal" in r.detail for r in results)
 
 
-def test_story_found_needs_the_right_section_and_exercise(stall) -> None:
+def test_expected_placement_needs_the_right_section_and_exercise(stall) -> None:
     data, figures = stall
     wrong_section = Review(
         headline="h",
@@ -99,11 +100,12 @@ def test_story_found_needs_the_right_section_and_exercise(stall) -> None:
     results = _by_name(
         run_checks(data.case, figures, _run(wrong_section, [_call(BENCH)]), data.workouts)
     )
-    assert results["story_found"].passed is False
-    assert "concerns" in results["story_found"].detail and BENCH in results["story_found"].detail
+    placement = results["expected_placement"]
+    assert placement.passed is False
+    assert "concerns" in placement.detail and BENCH in placement.detail
 
 
-def test_story_found_accepts_any_lift_for_steady_progress() -> None:
+def test_expected_placement_accepts_any_lift_for_steady_progress() -> None:
     data = build_case(_case("steady_progress-1"))
     figures = week_figures(data.workouts, data.review_week)
     review = Review(
@@ -113,7 +115,7 @@ def test_story_found_accepts_any_lift_for_steady_progress() -> None:
         suggestions=[],
     )
     results = _by_name(run_checks(data.case, figures, _run(review, []), data.workouts))
-    assert results["story_found"].passed is True
+    assert results["expected_placement"].passed is True
 
 
 def test_false_alarm_on_a_negative_case() -> None:
@@ -127,7 +129,8 @@ def test_false_alarm_on_a_negative_case() -> None:
     )
     results = _by_name(run_checks(data.case, figures, _run(review, [_call(SQUAT)]), data.workouts))
     assert results["no_false_alarm"].passed is False
-    assert results["story_found"].passed is True  # nothing was expected, nothing is missing
+    # Nothing was planted, so placement has nothing to test: reported as such, not as a pass.
+    assert results["expected_placement"].applicable is False
 
 
 def test_false_alarm_on_an_unplanted_exercise_in_a_positive_case(stall) -> None:
@@ -170,7 +173,8 @@ def test_overall_concern_is_a_false_alarm_unless_sessions_were_planted(stall) ->
         suggestions=[],
     )
     results = _by_name(run_checks(missed.case, missed_figures, _run(ok, []), missed.workouts))
-    assert results["no_false_alarm"].passed is True and results["story_found"].passed is True
+    assert results["no_false_alarm"].passed is True
+    assert results["expected_placement"].passed is True
 
 
 def test_exercises_exist_rejects_names_not_in_the_figures(stall) -> None:
@@ -421,7 +425,7 @@ def _checks(stall, review: Review, calls: list[ToolCall] | None = None):
     )
 
 
-def test_flags_in_concerns_needs_every_flag(stall) -> None:
+def test_flags_carried_needs_every_flag(stall) -> None:
     data, figures = stall
     assert [f.kind for f in figures.summary.flags] == ["stall"]
     carried = Review(
@@ -436,8 +440,8 @@ def test_flags_in_concerns_needs_every_flag(stall) -> None:
         concerns=[],
         suggestions=[],
     )
-    assert _checks(stall, carried)["flags_in_concerns"].passed
-    result = _checks(stall, dropped)["flags_in_concerns"]
+    assert _checks(stall, carried)["flags_carried"].passed
+    result = _checks(stall, dropped)["flags_carried"]
     assert not result.passed and "5 consecutive weeks" in result.detail
 
 

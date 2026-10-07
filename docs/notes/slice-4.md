@@ -14,6 +14,8 @@ Date: 2026-10-05. Branch `claude/funny-cori-evrx1v`.
 
 ## What each check can and cannot catch
 
+As written at slice 4 and extended in the follow-up. `story_found` and `flags_in_concerns` were replaced on 2026-10-07 (findings entry 13); current definitions are in `docs/checks.md`.
+
 | Check | Catches | Does not catch |
 | --- | --- | --- |
 | `schema_valid` | Refusals, truncation, invalid JSON, a fourth suggestion, blank text, extra keys. | A review that is valid and wrong. |
