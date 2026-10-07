@@ -11,14 +11,17 @@ cleverer:
   for missed sessions, or the condition itself negated ("not stalled").
 
 Text is split into clauses. A cue is negated by one of the three words before it ("not
-progressing", "hasn't increased", "halting the advances") or by a stopping word just
-after it ("progress has stalled"). Some cues are not claims about this week and are
-ignored: after "to", "should" or a similar word (a wish), and next to "after", "earlier",
-"until" or a similar word (earlier weeks). For an exercise's flag, a clause naming another
-exercise or "other lifts" is not read, and nor is a cue about effort or volume: "the
-rising RPE" beside an unchanged top set is the rising-effort story, not progress. The
-flagged exercise's own name is read as "it", so its words neither name another exercise
-("incline" in Seated Incline Curl) nor make a claim ("decline" in Decline Bench Press).
+progressing", "hasn't increased", "halting the advances"), by a "no" or "without" in front
+of a short list ("no load or rep increase"), by a stall word just before the noun
+"progress" ("stalled progress", "a stall in progress"), or by a stopping word just after
+it ("progress has stalled"). Some cues are not claims about this week and are ignored:
+after "to", "should", "time to" or a similar word (a wish), before "is essential" or the
+like (advice), and next to "after", "earlier", "until" or a similar word (earlier
+weeks). For an exercise's flag, a clause naming another exercise or "other lifts" is not
+read, and nor is a cue about effort or volume: "the rising RPE" beside an unchanged top
+set is the rising-effort story, not progress. The flagged exercise's own name is read as
+"it", so its words neither name another exercise ("incline" in Seated Incline Curl) nor
+make a claim ("decline" in Decline Bench Press).
 
 What it does not do, by design: check the numbers a finding quotes (the kilogram and
 percentage checks do, within their own limits), read the headline or suggestions, or
@@ -225,6 +228,36 @@ _SPLIT = re.compile(
     r"|\b(?:while|whereas|but|although|though|however|unlike|despite|compared|and|with)\b"
     r"|(?<!same )\bas\b"
 )
+#: A stall word just before the noun "progress" states the stall: "stalled progress",
+#: "stalling your progress", "a stall in progress".
+_STALL_WORDS = frozenset({"stall", "stalls", "stalled", "stalling"})
+#: Nouns a negated short list can end in: "no load or rep increase", "without load or rep
+#: increases". The list must be joined by "or", so "no deload and the bench rose" is not read
+#: as a negated rise.
+_LISTED_NOUNS = frozenset(
+    {
+        "increase",
+        "increases",
+        "gain",
+        "gains",
+        "rise",
+        "rises",
+        "change",
+        "changes",
+        "improvement",
+        "improvements",
+        "progress",
+        "drop",
+        "drops",
+        "decline",
+        "declines",
+    }
+)
+#: Advice anywhere earlier in the clause makes a cue a wish: "time to push for an increase".
+_ADVICE = re.compile(r"\b(?:time to|push for|aim for|go for|look to|work towards?)\b")
+#: A cue followed by "is essential" or the like is the subject of advice: "consistent
+#: attendance is essential".
+_ADVICE_AFTER = frozenset({"essential", "key", "important", "vital", "critical", "crucial"})
 _RELATIVE = re.compile(r"^\s*(?:which|who|that|where)\b")
 _WORD = re.compile(r"[a-z0-9']+")
 
@@ -244,6 +277,7 @@ class Reading:
 def _normalise(text: str) -> str:
     t = text.lower().replace("\u2019", "'").replace("\u2018", "'")
     t = re.sub(r"\bno longer\b", "not", t)
+    t = re.sub(r"\bnot yet\b", "not", t)
     t = re.sub(r"\b(?:failed|fails|failing|yet|unable) to\b", "not", t)
     t = re.sub(r"\b(?:stopped|ceased|halted)\b(?=\s+\w+ing\b)", "not", t)
     return re.sub(r"\black of\b", "no", t)
@@ -308,15 +342,29 @@ def _about_something_else(clause: str, others: Sequence[str]) -> bool:
     )
 
 
+def _negated_list(before: Sequence[str], cue: str) -> bool:
+    """A "no" or "without" up to five words back, across a short "or" list, negates a noun cue."""
+    if cue not in _LISTED_NOUNS:
+        return False
+    window = list(before[-5:])
+    starts = [i for i, word in enumerate(window) if word in {"no", "without", "not"}]
+    return bool(starts) and any(word in {"or", "nor"} for word in window[starts[-1] + 1 :])
+
+
 def _cues(
     clauses: Sequence[str], family: re.Pattern[str], *, effort_counts: bool
 ) -> Iterator[tuple[str, bool]]:
     """Each claim the family makes in the clauses, as (clause, negated). Wishes are skipped."""
     for clause in clauses:
         for match in family.finditer(clause):
+            cue = match.group(0)
             before = _WORD.findall(clause[: match.start()])
             after = _WORD.findall(clause[match.end() :])[:3]
             if any(word in _IRREALIS for word in before[-2:]):
+                continue
+            if _ADVICE.search(clause[: match.start()]):
+                continue
+            if len(after) >= 2 and after[0] in {"is", "are"} and after[1] in _ADVICE_AFTER:
                 continue
             if any(w in _PAST_BEFORE for w in before[-3:]) or any(w in _PAST_AFTER for w in after):
                 continue
@@ -326,6 +374,8 @@ def _cues(
                 continue
             negated = (
                 any(w in _NEGATORS or w.endswith("n't") for w in before[-3:])
+                or _negated_list(before, cue)
+                or (cue == "progress" and any(w in _STALL_WORDS for w in before[-3:]))
                 or any(w in _HALTERS for w in before)
                 or any(w in _STOPPERS for w in after)
             )

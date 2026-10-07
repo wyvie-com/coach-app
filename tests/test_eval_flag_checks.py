@@ -463,3 +463,98 @@ def test_known_limit_a_shortened_flagged_name_can_still_read_as_another_lift() -
     names = [INCLINE_CURL, INCLINE_PRESS]
     text = "The incline curl has held at 80 kg x 5 for five weeks."
     assert not read("stall", text, other_names(INCLINE_CURL, names), own=INCLINE_CURL).states
+
+
+# Correct findings the reader failed on Claude's stored reviews (docs/findings.md entry 15),
+# rewritten here on the synthetic cases. Each states its flag; none says the opposite.
+@pytest.mark.parametrize(
+    "name, exercise, text",
+    [
+        # "progress" inside a phrase that states the stall
+        (
+            "bench_stall-1",
+            BENCH,
+            "Top set unchanged at 80 kg x 5 for 5 consecutive weeks, indicating stalled progress.",
+        ),
+        (
+            "bench_stall-1",
+            BENCH,
+            "Top set stuck at 80 kg x 5 for 5 consecutive weeks, stalling progress on a main lift.",
+        ),
+        (
+            "bench_stall-1",
+            BENCH,
+            "The top set has stayed at 80 kg for 5 reps for five weeks, stalling your progress.",
+        ),
+        (
+            "rising_rpe-1",
+            DEADLIFT,
+            "Top set unchanged at 140 kg x 5 for 5 consecutive weeks, signalling a stall in "
+            "progress.",
+        ),
+        # a "no" or "without" four words back, across a short list
+        (
+            "rising_rpe-1",
+            DEADLIFT,
+            "The top set has held at 140 kg for 5 reps for five weeks despite no load or rep "
+            "increases.",
+        ),
+        (
+            "bench_stall-1",
+            BENCH,
+            "Stalled at 80 kg for 5 reps, five consecutive weeks without load or rep increases.",
+        ),
+        # advice read as a claim
+        (
+            "rising_rpe-1",
+            DEADLIFT,
+            "The top set has held at 140 kg for 5 reps for five weeks, so the load is getting "
+            "harder to hold, time to push for a weight increase.",
+        ),
+        (
+            "missed_sessions-1",
+            "Overall",
+            "You missed 2 sessions this week. Consistent attendance is essential for maintaining "
+            "your progress.",
+        ),
+    ],
+)
+def test_correct_findings_the_reader_once_misread_now_pass(
+    name: str, exercise: str, text: str
+) -> None:
+    built = _built(name)
+    calls = [] if exercise == "Overall" else [_call(exercise)]
+    results = _results(built, _review(concerns=[Finding(exercise=exercise, text=text)]), calls)
+    assert results["flags_carried"].passed, results["flags_carried"].detail
+    assert results["flags_consistent"].passed, results["flags_consistent"].detail
+
+
+@pytest.mark.parametrize(
+    "name, exercise, text",
+    [
+        # the narrower rules leave real contradictions standing
+        ("bench_stall-1", BENCH, "Bench stalled before progressing again this week."),
+        ("bench_stall-1", BENCH, "Bench stalled earlier, but progress resumed this week."),
+        ("bench_stall-1", BENCH, "Bench rose 2.5 kg this week; time to consolidate."),
+        ("rising_rpe-1", DEADLIFT, "No deload and the deadlift rose 2.5 kg this week."),
+        # a review on a stored run said this of a five-week hold; it denies the stall
+        (
+            "rising_rpe-1",
+            DEADLIFT,
+            "The top set has held at 140 kg for five weeks. While not yet a full stall, the rising "
+            "effort with no load or rep increase needs attention.",
+        ),
+        (
+            "missed_sessions-1",
+            "Overall",
+            "Consistent attendance this week: all three sessions done.",
+        ),
+    ],
+)
+def test_contradictions_still_fail_after_the_reader_fixes(
+    name: str, exercise: str, text: str
+) -> None:
+    built = _built(name)
+    calls = [] if exercise == "Overall" else [_call(exercise)]
+    results = _results(built, _review(concerns=[Finding(exercise=exercise, text=text)]), calls)
+    assert not results["flags_consistent"].passed, text
