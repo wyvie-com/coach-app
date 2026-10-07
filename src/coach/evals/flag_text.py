@@ -16,7 +16,9 @@ after it ("progress has stalled"). Some cues are not claims about this week and 
 ignored: after "to", "should" or a similar word (a wish), and next to "after", "earlier",
 "until" or a similar word (earlier weeks). For an exercise's flag, a clause naming another
 exercise or "other lifts" is not read, and nor is a cue about effort or volume: "the
-rising RPE" beside an unchanged top set is the rising-effort story, not progress.
+rising RPE" beside an unchanged top set is the rising-effort story, not progress. The
+flagged exercise's own name is read as "it", so its words neither name another exercise
+("incline" in Seated Incline Curl) nor make a claim ("decline" in Decline Bench Press).
 
 What it does not do, by design: check the numbers a finding quotes (the kilogram and
 percentage checks do, within their own limits), read the headline or suggestions, or
@@ -282,6 +284,24 @@ def other_names(flagged: str, names: Iterable[str]) -> list[str]:
     return aliases
 
 
+def _own_name_as_it(clause: str, own: str, others: Sequence[str]) -> str:
+    """The clause with the flagged exercise's name, without its equipment, replaced by "it".
+
+    A longer name that contains it (Straight Arm Lat Pulldown, for Lat Pulldown) belongs to
+    another exercise and is left as written.
+    """
+    name = _base(own)
+    if not name or name == "overall":
+        return clause
+    longer = sorted(
+        (a for a in others if a != name and re.search(rf"\b{re.escape(name)}\b", a)),
+        key=len,
+        reverse=True,
+    )
+    pattern = re.compile("|".join(rf"\b{re.escape(n)}\b" for n in [*longer, name]))
+    return pattern.sub(lambda m: "it" if m.group(0) == name else m.group(0), clause)
+
+
 def _about_something_else(clause: str, others: Sequence[str]) -> bool:
     return bool(_OTHERS.search(clause)) or any(
         re.search(rf"\b{re.escape(alias)}\b", clause) for alias in others
@@ -321,8 +341,12 @@ def _first(
     return None
 
 
-def read(kind: str, text: str, others: Sequence[str] = ()) -> Reading:
-    """Read ``text`` against a flag of ``kind``. ``others`` names the other exercises."""
+def read(kind: str, text: str, others: Sequence[str] = (), own: str = "") -> Reading:
+    """Read ``text`` against a flag of ``kind``.
+
+    ``others`` names the other exercises, as ``other_names`` gives them; ``own`` is the
+    flagged exercise, whose name is read as "it" rather than as words.
+    """
     clauses = _clauses(_normalise(text))
     if kind == "sessions_missed":
         opposite = _first(clauses, ATTENDANCE, False, effort_counts=True) or _first(
@@ -331,7 +355,8 @@ def read(kind: str, text: str, others: Sequence[str] = ()) -> Reading:
         states = _first(clauses, SHORTFALL, False, effort_counts=True) is not None
         return Reading(states=states and opposite is None, opposite=opposite, instead=())
 
-    readable = [c for c in clauses if not _about_something_else(c, others)]
+    named = (_own_name_as_it(c, own, others) for c in clauses)
+    readable = [c for c in named if not _about_something_else(c, others)]
     rise = _first(readable, PROGRESS, False)
     fall = _first(readable, FALL, False)
     if kind == "stall":

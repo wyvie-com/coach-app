@@ -266,7 +266,7 @@ def _flag_checks(review: Review, figures: WeekFigures) -> list[CheckResult]:
     for flag in flags:
         others = other_names(flag.exercise, names)
         concerns = [f for f in review.concerns if f.exercise == flag.exercise]
-        readings = [read(flag.kind, f.text, others) for f in concerns]
+        readings = [read(flag.kind, f.text, others, own=flag.exercise) for f in concerns]
         if not any(r.states for r in readings):
             instead = sorted({kind for r in readings for kind in r.instead})
             if not concerns:
@@ -280,7 +280,7 @@ def _flag_checks(review: Review, figures: WeekFigures) -> list[CheckResult]:
             for finding in _section(review, section):
                 if finding.exercise != flag.exercise:
                     continue
-                clause = read(flag.kind, finding.text, others).opposite
+                clause = read(flag.kind, finding.text, others, own=flag.exercise).opposite
                 if clause:
                     opposite.append(
                         f"{flag.exercise} {section[:-1]} says '{clause}' against: {flag.text}"
