@@ -1,6 +1,6 @@
 # Coach
 
-**Status: version 0.3.1, a single-account personal tool.** It runs the full pipeline on one person's Hevy log; anything in these documents about many users is a proposal and says so. Version 0.3.0 added the check changes described in `docs/checks.md` to 0.2.0, and 0.3.1 fixes a reading error in them found on real weeks (`docs/findings.md` entry 14). `docs/later.md` lists what is deliberately not built.
+**Status: version 0.3.2, a single-account personal tool.** It runs the full pipeline on one person's Hevy log; anything in these documents about many users is a proposal and says so. Version 0.3.0 added the check changes described in `docs/checks.md` to 0.2.0; 0.3.1 fixes a reading error in them found on real weeks, and 0.3.2 the misreads found by re-scoring Claude's stored reviews (`docs/findings.md` entries 14 to 16). `docs/later.md` lists what is deliberately not built.
 
 ## For the reader with two minutes
 
@@ -21,13 +21,13 @@ The latest full run (Haiku 4.5, 2026-10-06, 48 trials) was scored with the check
 | `flags_in_concerns` | the flagged exercise appeared in concerns; the words were not read | 27 of 27 trials that had a flag; 21 trials had none |
 | `comparisons_grounded` | rankings and "all" claims matched the leaders and counts the code computed | 38 of 48 |
 
-None of those checks read what a finding said. A review built by hand that put the bench in concerns but called it "progressing normally and not stalled" passed all twelve; it is not model output. The checks now read the words for the flagged conditions (`flags_carried`, `flags_consistent`). They have been run on model output once, on four reviews of real weeks on 2026-10-07, and wrongly failed one correct concern: a reader bug, fixed in 0.3.1 (findings entry 14). The stored eval reviews have not been re-scored, so there is no suite pass rate for them.
+None of those checks read what a finding said. A review built by hand that put the bench in concerns but called it "progressing normally and not stalled" passed all twelve; it is not model output. The checks now read the words for the flagged conditions (`flags_carried`, `flags_consistent`). Re-scored over Claude's 164 stored eval reviews (findings entry 15), they wrongly failed 8 of the 89 trials that had a flag and caught 7 real errors. 0.3.2 fixes the three patterns behind those misreads (entry 16), but the fixes were tuned on the same trials, and no fresh run has yet measured them on reviews they were not tuned on.
 
-The suite reached those numbers in steps, recorded in `docs/findings.md` with pass rates before and after, including one prompt change withdrawn because it measured worse. The steps are not a controlled comparison: the first run had 15 cases and 45 trials, the latest 16 cases and 48, and the checks, the prompt and the figures changed in between. The open issue is the last row: the review still says "across the board" when five lifts in six moved, or ranks the second-placed lift first. No review on either model refused, truncated or invented an exercise.
+The suite reached those numbers in steps, recorded in `docs/findings.md` with pass rates before and after, including one prompt change withdrawn because it measured worse. The steps are not a controlled comparison: the first run had 15 cases and 45 trials, the latest 16 cases and 48, and the checks, the prompt and the figures changed in between. The open issue is the last row. Read in full (entry 15), its 10 failures were 6 real errors, four "across the board" when five lifts in six moved and two false superlatives, and 4 correct sentences the check misread, fixed in 0.3.2. No review on either model refused, truncated or invented an exercise.
 
 **Known limits.** The checks read words and numbers, not meaning:
 
-- The flag checks read the highlights and concerns about a flagged exercise, by word families. They do not read the headline or suggestions, check the numbers inside a statement, or follow phrasing outside their word lists, and their false-failure rate on model prose is not yet measured: four real-week reviews are too few.
+- The flag checks read the highlights and concerns about a flagged exercise, by word families. They do not read the headline or suggestions, check the numbers inside a statement, or follow phrasing outside their word lists, and on Claude's stored reviews they wrongly failed 8 of the 89 trials that had a flag before the fixes in 0.3.2; their rate on reviews the fixes were not tuned on is not yet measured.
 - Kilogram grounding accepts a real number attached to the wrong exercise, metric or week. Percentage grounding ignores the sign and the window. Neither reads suggestions.
 - A rep PR, rising effort and steady progress are checked for placement only.
 - Meaning beyond the code checks rests on the rubric grader, which is uncalibrated.
@@ -56,7 +56,7 @@ src/coach/
 
 ```
 uv sync
-uv run pytest                                   # 224 tests, no network, no key
+uv run pytest                                   # 263 tests, no network, no key
 cp .env.example .env                            # COACH_ANTHROPIC_API_KEY; HEVY_API_KEY or the proxy route
 uv run coach check-credentials                  # two status codes, nothing else
 uv run coach pull                               # private/hevy/<date>/

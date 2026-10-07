@@ -5,4 +5,4 @@ code checks and a rubric test how far a review keeps to that. See docs/spec.md
 for the design and docs/checks.md for what the checks do not test.
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
