@@ -1,6 +1,6 @@
 [project]
 name = "coach"
-version = "0.2.0"
+version = "0.3.0"
 description = "A personal AI training coach on Hevy data: code computes, Claude interprets, evals judge."
 readme = "README.md"
 license = "MIT"

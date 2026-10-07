@@ -1,6 +1,6 @@
 # Coach
 
-**Status: a single-account personal tool.** It runs the full pipeline on one person's Hevy log; anything in these documents about many users is a proposal and says so. Version 0.2.0 is the last release, and the check changes described in `docs/checks.md` came after it. `docs/later.md` lists what is deliberately not built.
+**Status: version 0.3.0, a single-account personal tool.** It runs the full pipeline on one person's Hevy log; anything in these documents about many users is a proposal and says so. Version 0.3.0 adds the check changes described in `docs/checks.md` to 0.2.0. `docs/later.md` lists what is deliberately not built.
 
 ## For the reader with two minutes
 
