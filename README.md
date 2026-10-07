@@ -56,7 +56,7 @@ src/coach/
 
 ```
 uv sync
-uv run pytest                                   # 210 tests, no network, no key
+uv run pytest                                   # 217 tests, no network, no key
 cp .env.example .env                            # COACH_ANTHROPIC_API_KEY; HEVY_API_KEY or the proxy route
 uv run coach check-credentials                  # two status codes, nothing else
 uv run coach pull                               # private/hevy/<date>/
@@ -76,7 +76,7 @@ uv run coach rescore out/eval/<timestamp>/trials.jsonl --strict-grounding
 
 ## Who did what
 
-John, the repository owner (Wyvie), set what the project had to be and decided between options. Claude, working in Claude Code, wrote the code, tests and documents and ran the evaluations. From the build conversation:
+John ([@wyvie-com](https://github.com/wyvie-com)), the repository owner, set what the project had to be and decided between options. Claude, working in Claude Code, wrote the code, tests and documents and ran the evaluations. From the build conversation:
 
 - **Requirements.** John supplied the brief: the problem, the rules (tests before code, no network in tests, how keys are read and never shown, the data boundary, CI, the default model), the evaluation approach of code checks first and a rubric second, and a build in slices that stopped for approval after each one.
 - **Decisions.** John accepted Claude's recommendation of Sonnet 5.5 as the comparison model with one Opus run, and chose Wyvie as the copyright holder. John questioned an unsourced claim about estimated one-rep maxes and supplied sourced research, which set the ten-rep ceiling and rep PRs at matched loads. John also said deload weeks are part of the training being reviewed, which led to the deload rule.

@@ -48,7 +48,7 @@ PROGRESS = _family(
     r"gain(?:s|ed|ing)?",
     r"advanc(?:e|es|ed|ing)",
     r"mov(?:ed|ing)(?: up)?|budg(?:e|ed|ing)",
-    r"(?:went|going|is|are|was|were) up",
+    r"(?:went|gone|going|is|are|was|were) up",
     r"up (?:by )?\d[\d.]*|up from",
     r"new (?:best|high|pr|personal best|personal record)|(?:rep )?pr",
 )
@@ -65,6 +65,8 @@ FALL = _family(
     r"lower(?:ed)?(?! back)",
     r"reduc(?:ed|tion)",
     r"weaker|worse",
+    r"backwards?",
+    r"slid(?:e|es|ing)?",
 )
 #: The top set unchanged. States a stall unless negated; negated ("not stalled"), the opposite.
 STALL = _family(
@@ -79,13 +81,14 @@ STALL = _family(
     r"same (?:[\d.]+ ?kg (?:x \d+ )?)?(?:top set|load|weight|numbers)",
     r"repeat(?:s|ed|ing)?",
     r"still (?:at )?\d[\d.]*",
+    r"same (?:as|for)",
 )
 #: Change. Read only when negated ("hasn't changed", "no change"); then it states a stall.
 CHANGE = _family(r"chang(?:e|es|ed|ing)")
 #: A stated duration. States a stall only when the finding states no rise and no fall, since
 #: "rose for five weeks" is not a stall.
 DURATION = _family(
-    rf"for {_NUMBER} (?:consecutive |straight |successive )?weeks",
+    rf"for (?:the )?(?:last |past )?{_NUMBER} (?:consecutive |straight |successive )?weeks",
     rf"{_NUMBER} (?:consecutive|straight|successive) weeks",
     r"weeks? (?:running|in a row)",
     r"every week|each week|week after week|week on week",
@@ -102,6 +105,7 @@ SHORTFALL = _family(
     r"short of",
     r"(?:lower|reduced|less|dropped) (?:training )?(?:frequency|attendance)",
     rf"{_NUMBER} sessions?",
+    rf"{_NUMBER} (?:of|out of) {_NUMBER}",
 )
 #: Full attendance: the opposite of missed sessions.
 ATTENDANCE = _family(
@@ -216,7 +220,8 @@ _IRREALIS = frozenset(
 )
 _SPLIT = re.compile(
     r"\.(?!\d)|[;:!?()\[\],]|\s[-\u2013\u2014]+\s"
-    r"|\b(?:while|whereas|but|although|though|however|unlike|despite|compared|and|with|as)\b"
+    r"|\b(?:while|whereas|but|although|though|however|unlike|despite|compared|and|with)\b"
+    r"|(?<!same )\bas\b"
 )
 _RELATIVE = re.compile(r"^\s*(?:which|who|that|where)\b")
 _WORD = re.compile(r"[a-z0-9']+")

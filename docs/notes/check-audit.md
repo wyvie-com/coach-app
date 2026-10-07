@@ -13,7 +13,7 @@ A review of the repository built a review by hand for the planted bench stall th
 - `coach.evals.flag_text` reads the prose for both, by word families with negation. `docs/checks.md` gives the rules and the limits.
 - A check with nothing to test reports n/a. The harness, the report, `coach rescore` and `review.md` count n/a apart from passes, and the eval report has a row for negative cases.
 - `docs/checks.md` gives one line per check on what it measures and what it does not. The README, the architecture note and the findings log label every past figure with the definition it was measured under.
-- Tests: 41 in `tests/test_eval_flag_checks.py`, 210 in total.
+- Tests: 48 in `tests/test_eval_flag_checks.py`, 217 in total.
 
 ## Decisions and rejected alternatives
 

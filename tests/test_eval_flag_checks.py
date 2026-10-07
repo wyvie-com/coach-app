@@ -347,3 +347,23 @@ def test_a_current_rise_after_a_stall_is_still_a_contradiction(stall) -> None:
 def test_recent_progress_is_a_contradiction(stall, text: str) -> None:
     review = _review(concerns=[Finding(exercise=BENCH, text=text)])
     assert not _results(stall, review, [_call(BENCH)])["flags_consistent"].passed
+
+
+@pytest.mark.parametrize(
+    "name, exercise, text",
+    [
+        ("bench_stall-1", BENCH, "Bench has been the same for the last five weeks."),
+        ("bench_stall-1", BENCH, "Bench top set is the same as five weeks ago."),
+        ("bench_stall-1", BENCH, "Bench hasn't gone up in five weeks."),
+        ("bench_stall-1", BENCH, "Bench at 80 kg x 5 for the past five weeks."),
+        ("deadlift_regression-1", DEADLIFT, "Deadlift has gone backwards over four weeks."),
+        ("deadlift_regression-1", DEADLIFT, "Deadlift top set slid from 140 kg to 130 kg."),
+        ("missed_sessions-1", "Overall", "One of three planned sessions completed."),
+    ],
+)
+def test_more_everyday_paraphrases_carry_the_flag(name: str, exercise: str, text: str) -> None:
+    built = _built(name)
+    calls = [] if exercise == "Overall" else [_call(exercise)]
+    results = _results(built, _review(concerns=[Finding(exercise=exercise, text=text)]), calls)
+    assert results["flags_carried"].passed, results["flags_carried"].detail
+    assert results["flags_consistent"].passed, results["flags_consistent"].detail

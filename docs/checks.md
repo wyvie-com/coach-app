@@ -26,9 +26,9 @@ The rubric grader is a separate model call that scores four dimensions from 1 to
 
 `coach.evals.flag_text` reads one finding against one flag by word families and nothing cleverer:
 
-- **A stall:** unchanged, stalled, stuck, flat, plateaued, held at, the same top set, no progress, hasn't increased, or a stated duration ("for five weeks", "every week") when nothing in the finding rose or fell.
-- **A fall:** down, fell, dropped, declined, regressed, lower.
-- **Missed sessions:** missed, skipped, fewer, only one session, trained once, below the baseline.
+- **A stall:** unchanged, stalled, stuck, flat, plateaued, held at, the same top set, the same as five weeks ago, no progress, hasn't increased, hasn't gone up, or a stated duration ("for five weeks", "for the last five weeks", "every week") when nothing in the finding rose or fell.
+- **A fall:** down, fell, dropped, declined, regressed, slid, lower, gone backwards.
+- **Missed sessions:** missed, skipped, fewer, only one session, one of three, trained once, below the baseline.
 - **Opposites:** progressing, improved, rose, climbing, up 7.5%, a new PR for a stall or a fall; all sessions done, on track, nothing missed for missed sessions; and the condition itself negated ("not stalled", "hasn't dropped").
 
 It reads negation from the three words before a cue ("not progressing", "hasn't increased"), from a stopping word anywhere before it ("halting the steady weekly advances"), and from a stopping word just after it ("progress has stalled"). It ignores wishes ("needs to progress"), earlier weeks ("after steady progress earlier", "rose until week 36"), cues about effort or volume ("the rising RPE"), and, for an exercise's flag, clauses that name another lift or "other lifts". A finding that both states the condition and says the opposite does not carry the flag.
